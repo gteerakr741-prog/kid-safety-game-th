@@ -47,13 +47,21 @@ if(params.get('voice') === 'off') state.voice = false;
 
 function syncViewportSize(){
   const viewport=window.visualViewport;
-  document.documentElement.style.setProperty('--app-width',`${Math.round(viewport?.width||window.innerWidth)}px`);
-  document.documentElement.style.setProperty('--app-height',`${Math.round(viewport?.height||window.innerHeight)}px`);
+  const widths=[viewport?.width,window.innerWidth,document.documentElement.clientWidth].filter(Number.isFinite);
+  const heights=[viewport?.height,window.innerHeight,document.documentElement.clientHeight].filter(Number.isFinite);
+  document.documentElement.style.setProperty('--app-width',`${Math.floor(Math.min(...widths))}px`);
+  document.documentElement.style.setProperty('--app-height',`${Math.floor(Math.min(...heights))}px`);
+}
+function resyncViewport(){
+  syncViewportSize();
+  requestAnimationFrame(syncViewportSize);
+  [100,300,700].forEach(delay=>setTimeout(syncViewportSize,delay));
 }
 syncViewportSize();
-window.addEventListener('resize',syncViewportSize,{passive:true});
-window.addEventListener('orientationchange',()=>setTimeout(syncViewportSize,120),{passive:true});
+window.addEventListener('resize',resyncViewport,{passive:true});
+window.addEventListener('orientationchange',resyncViewport,{passive:true});
 window.visualViewport?.addEventListener('resize',syncViewportSize,{passive:true});
+window.visualViewport?.addEventListener('scroll',syncViewportSize,{passive:true});
 
 const stage = $('#stage');
 const camera = $('#camera');
