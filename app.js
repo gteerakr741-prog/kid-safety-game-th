@@ -35,7 +35,7 @@ const state = {
   running:false, paused:false, index:0, score:0, streak:0, maxStreak:0, safeFirst:0, lives:3,
   retries:0, firstAttempt:true, deck:[], shownOptions:[], locked:false, lastFivePlayed:false,
   stream:null, handLandmarker:null, handLoading:false, lastDetect:0, lastFrame:-1,
-  hover:null, hoverStarted:0, dwellMs:650, choiceDwellMs:3000, timerId:null, answerTimer:null, advanceTimer:null,
+  hover:null, hoverStarted:0, dwellMs:650, choiceDwellMs:2000, timerId:null, answerTimer:null, advanceTimer:null,
   audio:null, voiceAudio:null, voiceResolve:null, voiceRun:0, testHold:0
 };
 
@@ -200,8 +200,8 @@ async function loadHandModel(){
     const common={baseOptions:{modelAssetPath:'./assets/vendor/mediapipe/models/hand_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numHands:1,minHandDetectionConfidence:.5,minHandPresenceConfidence:.45,minTrackingConfidence:.45};
     try{state.handLandmarker=await HandLandmarker.createFromOptions(vision,common);}
     catch{state.handLandmarker=await HandLandmarker.createFromOptions(vision,{...common,baseOptions:{...common.baseOptions,delegate:'CPU'}});}
-    $('#cameraStatus').textContent='พร้อมแล้ว ชี้ค้างบนคำตอบให้ครบ 3 วินาที';
-    $('#trackingText').textContent='ชี้ค้าง 3 วินาที หรือแตะคำตอบ';
+    $('#cameraStatus').textContent='พร้อมแล้ว ชี้ค้างบนคำตอบให้ครบ 2 วินาที';
+    $('#trackingText').textContent='ชี้ค้าง 2 วินาที หรือแตะคำตอบ';
   }catch(err){
     console.warn('Hand tracking unavailable',err);$('#cameraStatus').textContent='ตรวจมือไม่สำเร็จ ใช้การแตะหน้าจอแทนได้';
   }finally{state.handLoading=false;}
