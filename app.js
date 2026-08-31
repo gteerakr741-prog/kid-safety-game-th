@@ -29,6 +29,8 @@ const feedbackVoices={
   wrong:['./assets/voice/wrong-1.wav','./assets/voice/wrong-2.wav']
 };
 const voiceAssets=[...scenarios.flatMap(item=>Object.values(item.voice)),...optionVoices,...feedbackVoices.correct,...feedbackVoices.wrong];
+const AUDIO_LEVELS={menuMusic:1,gameMusic:.4,effect:.8,voice:1};
+const FEEDBACK_VOICE_DELAY_MS=100;
 
 const state = {
   screen:'loading', mode:'learn', duration:60, timeLeft:60, missionCount:12, sound:true, voice:true,
@@ -66,9 +68,9 @@ const sounds = {
   bonus1:new Audio('./assets/audio/bonus-1.mp3'),bonus2:new Audio('./assets/audio/bonus-2.mp3'),
   combo:new Audio('./assets/audio/combo.mp3'),finish:new Audio('./assets/audio/finish.mp3'),final5:new Audio('./assets/audio/final-5-seconds.mp3')
 };
-sounds.menu.loop=true;sounds.menu.volume=1;
-sounds.game.loop=true;sounds.game.volume=.4;
-Object.entries(sounds).forEach(([name,audio])=>{audio.preload='auto';if(!['menu','game'].includes(name))audio.volume=.8;});
+sounds.menu.loop=true;sounds.menu.volume=AUDIO_LEVELS.menuMusic;
+sounds.game.loop=true;sounds.game.volume=AUDIO_LEVELS.gameMusic;
+Object.entries(sounds).forEach(([name,audio])=>{audio.preload='auto';if(!['menu','game'].includes(name))audio.volume=AUDIO_LEVELS.effect;});
 
 function shuffle(items){
   const copy = [...items];
@@ -164,7 +166,7 @@ function playVoiceClip(src,run){
     if(!state.voice||run!==state.voiceRun||state.screen!=='game'||state.paused){resolve(false);return;}
     const audio=new Audio(src);let settled=false;
     const finish=played=>{if(settled)return;settled=true;if(state.voiceAudio===audio){state.voiceAudio=null;state.voiceResolve=null;}resolve(played);};
-    state.voiceAudio=audio;state.voiceResolve=finish;audio.preload='auto';audio.volume=1;
+    state.voiceAudio=audio;state.voiceResolve=finish;audio.preload='auto';audio.volume=AUDIO_LEVELS.voice;
     audio.addEventListener('ended',()=>finish(true),{once:true});audio.addEventListener('error',()=>finish(false),{once:true});
     audio.play().catch(()=>finish(false));
   });
@@ -345,11 +347,11 @@ function selectChoice(index,source='touch'){
     state.score+=gained;state.maxStreak=Math.max(state.maxStreak,state.streak);state.safeFirst++;
     if(isBonus){playEffect('combo');feedback('โบนัสใหญ่! x2  +200','bonus',1450);}
     else{if(state.streak%3===2)playEffect('bonus1');feedback('ปลอดภัย! +100 คะแนน','good');}
-    answerVoice=playVoiceSequence([feedbackVoices.correct[Math.floor(Math.random()*feedbackVoices.correct.length)]],{delay:100,gap:0});
+    answerVoice=playVoiceSequence([feedbackVoices.correct[Math.floor(Math.random()*feedbackVoices.correct.length)]],{delay:FEEDBACK_VOICE_DELAY_MS,gap:0});
   }else{
     choices[index].classList.add('wrong');stage.classList.add('wrong-impact');$('#dangerFlash').classList.add('show');playEffect('wrong');
     state.retries++;state.streak=0;state.lives=Math.max(0,state.lives-1);$('.hearts-item').classList.remove('heart-hit');void $('.hearts-item').offsetWidth;$('.hearts-item').classList.add('heart-hit');
-    feedback('ไม่ปลอดภัย','try');answerVoice=playVoiceSequence([feedbackVoices.wrong[Math.floor(Math.random()*feedbackVoices.wrong.length)]],{delay:100,gap:0});
+    feedback('ไม่ปลอดภัย','try');answerVoice=playVoiceSequence([feedbackVoices.wrong[Math.floor(Math.random()*feedbackVoices.wrong.length)]],{delay:FEEDBACK_VOICE_DELAY_MS,gap:0});
   }
   updateHud();
   const bonusRound=opt.safe&&state.streak%3===0;
