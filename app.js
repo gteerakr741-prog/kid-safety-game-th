@@ -197,7 +197,7 @@ async function loadHandModel(){
   try{
     const {FilesetResolver,HandLandmarker}=await import('./assets/vendor/mediapipe/vision_bundle.mjs');
     const vision=await FilesetResolver.forVisionTasks('./assets/vendor/mediapipe/wasm');
-    const common={baseOptions:{modelAssetPath:'./assets/vendor/mediapipe/models/hand_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numHands:1,minHandDetectionConfidence:.5,minHandPresenceConfidence:.45,minTrackingConfidence:.45};
+    const common={baseOptions:{modelAssetPath:'./assets/vendor/mediapipe/models/hand_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numHands:2,minHandDetectionConfidence:.5,minHandPresenceConfidence:.45,minTrackingConfidence:.45};
     try{state.handLandmarker=await HandLandmarker.createFromOptions(vision,common);}
     catch{state.handLandmarker=await HandLandmarker.createFromOptions(vision,{...common,baseOptions:{...common.baseOptions,delegate:'CPU'}});}
     $('#cameraStatus').textContent='พร้อมแล้ว ชี้ค้างบนคำตอบให้ครบ 2 วินาที';
@@ -231,12 +231,23 @@ function clearHover(){
   stopSound(sounds.hold);choices.forEach(c=>{c.classList.remove('hovered');c.style.setProperty('--hold','0deg');c.style.setProperty('--hold-scale','1');});state.hover=null;state.hoverStarted=0;
 }
 
+function nearestHand(hands=[]){
+  return hands.reduce((nearest,landmarks)=>{
+    const wrist=landmarks[0],indexBase=landmarks[5],middleBase=landmarks[9],pinkyBase=landmarks[17];
+    if(!wrist||!indexBase||!middleBase||!pinkyBase)return nearest;
+    const palmLength=Math.hypot(middleBase.x-wrist.x,middleBase.y-wrist.y);
+    const palmWidth=Math.hypot(pinkyBase.x-indexBase.x,pinkyBase.y-indexBase.y);
+    const proximity=palmLength*palmWidth;
+    return !nearest||proximity>nearest.proximity?{landmarks,proximity}:nearest;
+  },null)?.landmarks;
+}
+
 async function trackingLoop(now){
   if(state.handLandmarker&&state.stream?.active&&!state.paused&&now-state.lastDetect>=66&&camera.readyState>=2&&camera.currentTime!==state.lastFrame){
     state.lastDetect=now;state.lastFrame=camera.currentTime;
     try{
       const result=state.handLandmarker.detectForVideo(camera,performance.now());
-      const tip=result.landmarks?.[0]?.[8];
+      const tip=nearestHand(result.landmarks)?.[8];
       if(tip){
         const r=stage.getBoundingClientRect();updatePointer((1-tip.x)*r.width,tip.y*r.height,now);
         $('#trackingDot').classList.add('ready');
