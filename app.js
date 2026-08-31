@@ -31,7 +31,7 @@ const feedbackVoices={
 const voiceAssets=[...scenarios.flatMap(item=>Object.values(item.voice)),...optionVoices,...feedbackVoices.correct,...feedbackVoices.wrong];
 
 const state = {
-  screen:'loading', mode:'learn', duration:60, timeLeft:60, sound:true, voice:true,
+  screen:'loading', mode:'learn', duration:60, timeLeft:60, missionCount:12, sound:true, voice:true,
   running:false, paused:false, index:0, score:0, streak:0, maxStreak:0, safeFirst:0, lives:3,
   retries:0, firstAttempt:true, deck:[], shownOptions:[], locked:false, lastFivePlayed:false,
   stream:null, handLandmarker:null, handLoading:false, lastDetect:0, lastFrame:-1,
@@ -342,7 +342,8 @@ function selectChoice(index,source='touch'){
 async function startGame(){
   ensureAudio();stopEffects();stopVoice();tone('tap');playMusic('game');
   const previewIndex=Number(params.get('scenario'))-1;
-  state.deck=Number.isInteger(previewIndex)&&scenarios[previewIndex]?[scenarios[previewIndex],...shuffle(scenarios.filter((_,i)=>i!==previewIndex))]:shuffle(scenarios);
+  const fullDeck=Number.isInteger(previewIndex)&&scenarios[previewIndex]?[scenarios[previewIndex],...shuffle(scenarios.filter((_,i)=>i!==previewIndex))]:shuffle(scenarios);
+  state.deck=fullDeck.slice(0,state.missionCount);
   state.index=0;state.score=0;state.streak=0;state.maxStreak=0;state.safeFirst=0;state.retries=0;state.lives=3;state.timeLeft=state.duration;state.lastFivePlayed=false;state.running=true;state.paused=false;
   setScreen('game');await startCamera();showScenario();
   clearInterval(state.timerId);state.timerId=setInterval(()=>{if(state.running&&!state.paused&&state.mode==='timed'){state.timeLeft-=.25;if(state.timeLeft<=5&&state.timeLeft>0&&!state.lastFivePlayed){state.lastFivePlayed=true;playEffect('final5');}updateHud();if(state.timeLeft<=0)finishGame();}},250);
@@ -352,7 +353,7 @@ function finishGame(){
   if(!state.running)return;state.running=false;state.locked=true;clearInterval(state.timerId);clearAnswerTimers();resetAnswerEffects();stopVoice();stopMusic();stopEffects();playEffect('finish');stopCamera();
   $('#finalScore').textContent='0';$('#safeCount').textContent=state.safeFirst;$('#maxStreak').textContent=state.maxStreak;$('#retryCount').textContent=state.retries;
   const ratio=state.safeFirst/Math.max(1,state.index||state.deck.length);$('#resultRank').textContent=ratio>=.83?'ผู้พิทักษ์ความปลอดภัย':ratio>=.58?'นักคิดก่อนเลือก':'ผู้พิทักษ์ฝึกหัด';
-  const badges=[];if(state.safeFirst>=8)badges.push('🛡️ คิดก่อนเลือก');if(state.maxStreak>=4)badges.push('⭐ มีสติยอดเยี่ยม');if(state.retries<=3)badges.push('🗣️ ขอความช่วยเหลือ');if(!badges.length)badges.push('🌱 พร้อมเรียนรู้');
+  const badges=[];if(state.safeFirst>=Math.ceil(state.deck.length*.67))badges.push('🛡️ คิดก่อนเลือก');if(state.maxStreak>=Math.min(4,state.deck.length))badges.push('⭐ มีสติยอดเยี่ยม');if(state.retries<=Math.ceil(state.deck.length*.25))badges.push('🗣️ ขอความช่วยเหลือ');if(!badges.length)badges.push('🌱 พร้อมเรียนรู้');
   $('#badgeList').innerHTML=badges.map(b=>`<span class="badge">${b}</span>`).join('');setScreen('result');
   const start=performance.now(),duration=1100,target=state.score;
   const tick=now=>{const p=Math.min(1,(now-start)/duration);$('#finalScore').textContent=Math.round(target*(1-Math.pow(1-p,3)));if(p<1)requestAnimationFrame(tick);};requestAnimationFrame(tick);
@@ -371,6 +372,7 @@ function goMenu(){
 
 function setMode(mode){state.mode=mode;$$('[data-mode]').forEach(b=>b.classList.toggle('selected',b.dataset.mode===mode));$('#durationRow').style.opacity=mode==='timed'?'1':'.45';tone('tap');}
 function setDuration(value){state.duration=Number(value);$$('[data-duration]').forEach(b=>b.classList.toggle('selected',Number(b.dataset.duration)===state.duration));tone('tap');}
+function setMissionCount(value){state.missionCount=Math.max(1,Math.min(scenarios.length,Number(value)||12));$$('[data-missions]').forEach(b=>b.classList.toggle('selected',Number(b.dataset.missions)===state.missionCount));tone('tap');}
 
 async function toggleFullscreen(){
   ensureAudio();tone('tap');
@@ -390,6 +392,7 @@ document.addEventListener('click',e=>{
 choices.forEach((c,i)=>c.addEventListener('pointerup',()=>selectChoice(i,'touch')));
 $$('[data-mode]').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
 $$('[data-duration]').forEach(b=>b.addEventListener('click',()=>setDuration(b.dataset.duration)));
+$$('[data-missions]').forEach(b=>b.addEventListener('click',()=>setMissionCount(b.dataset.missions)));
 $('#voiceToggle').addEventListener('change',e=>{state.voice=e.target.checked;if(!state.voice)stopVoice();});
 $('#soundToggle').addEventListener('change',e=>{state.sound=e.target.checked;syncAudioForScreen();if(state.sound)tone('tap');$('#muteButton').textContent=state.sound?'🔊':'🔇';});
 $('#muteButton').addEventListener('click',()=>{state.sound=!state.sound;$('#soundToggle').checked=state.sound;$('#muteButton').textContent=state.sound?'🔊':'🔇';syncAudioForScreen();if(state.sound)tone('tap');});
