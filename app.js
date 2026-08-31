@@ -19,7 +19,7 @@ const scenarios = [
 scenarios.forEach((item,index)=>{
   const number=String(index+1).padStart(2,'0');
   const base=`./assets/scenarios/${number}`;
-  item.panels={question:`${base}/question-panel.png?v=3`,safe:`${base}/safe-panel.png?v=3`,risk:`${base}/risk-panel.png?v=3`};
+  item.panels={question:`${base}/question-panel.png?v=4`,safe:`${base}/safe-panel.png?v=4`,risk:`${base}/risk-panel.png?v=4`};
   item.voice={question:`./assets/voice/q${number}.wav`,safe:`./assets/voice/safe${number}.wav`,risk:`./assets/voice/risk${number}.wav`};
 });
 
