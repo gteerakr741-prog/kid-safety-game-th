@@ -9,7 +9,7 @@
   <title>คิดก่อนเลือก: ภารกิจพิทักษ์ตัวเอง</title>
   <link rel="icon" href="data:,">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=28">
+  <link rel="stylesheet" href="styles.css?v=30">
 </head>
 <body>
   <main id="app">
@@ -99,6 +99,12 @@
         <div class="camera-help">ยกมือให้เห็นทั้งฝ่ามือ · อยู่ห่างกล้องประมาณ 1–2 เมตร</div>
       </section>
 
+      <section id="countdownScreen" class="screen countdown-screen" aria-live="assertive">
+        <p>เตรียมตัวให้พร้อม</p>
+        <strong id="countdownValue">4</strong>
+        <small>จัดตำแหน่งมือให้อยู่ในกล้อง</small>
+      </section>
+
       <section id="gameScreen" class="screen game-screen">
         <header class="hud">
           <div class="hud-item"><span class="hud-icon">🛡️</span><div><small>ภารกิจ</small><strong id="progressValue">1/12</strong></div></div>
@@ -162,6 +168,6 @@
       <div id="rotatePrompt" class="rotate-prompt"><span>↻</span><strong>หมุนอุปกรณ์เป็นแนวนอน</strong><p>เพื่อให้เห็นตัวเลือกครบและเล่นได้ถนัด</p></div>
     </section>
   </main>
-  <script type="module" src="app.js?v=28"></script>
+  <script type="module" src="app.js?v=30"></script>
 </body>
 </html>

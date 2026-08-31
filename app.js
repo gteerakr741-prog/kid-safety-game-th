@@ -29,7 +29,8 @@ const feedbackVoices={
   wrong:['./assets/voice/wrong-1.wav','./assets/voice/wrong-2.wav']
 };
 const voiceAssets=[...scenarios.flatMap(item=>Object.values(item.voice)),...optionVoices,...feedbackVoices.correct,...feedbackVoices.wrong];
-const AUDIO_LEVELS={menuMusic:1,gameMusic:.4,effect:.8,voice:1};
+const isMobileDevice=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Macintosh/i.test(navigator.userAgent));
+const AUDIO_LEVELS={menuMusic:1,gameMusic:isMobileDevice?.25:.4,effect:.8,voice:1};
 const FEEDBACK_VOICE_DELAY_MS=100;
 
 const state = {
@@ -38,7 +39,7 @@ const state = {
   retries:0, firstAttempt:true, deck:[], shownOptions:[], locked:false, lastFivePlayed:false,
   stream:null, handLandmarker:null, handLoading:false, lastDetect:0, lastFrame:-1,
   hover:null, hoverStarted:0, dwellMs:650, choiceDwellMs:2000, timerId:null, answerTimer:null, advanceTimer:null,
-  audio:null, voiceAudio:null, voiceResolve:null, voiceRun:0, testHold:0
+  audio:null, audioBuffers:new Map(), effectLoads:new Map(), effectSources:new Map(), voiceAudio:null, voiceResolve:null, voiceRun:0, startRun:0, testHold:0
 };
 
 const params = new URLSearchParams(location.search);
@@ -69,6 +70,8 @@ const menuVideo = $('#menuVideo');
 const pointer = $('#handPointer');
 const screens = $$('.screen');
 const choices = $$('.choice');
+const voicePlayer = new Audio();
+voicePlayer.preload='auto';voicePlayer.volume=AUDIO_LEVELS.voice;
 const sounds = {
   menu:new Audio('./assets/audio/menu-music.mp3'),game:new Audio('./assets/audio/game-music.mp3'),
   ui:new Audio('./assets/audio/ui-click.mp3'),hold:new Audio('./assets/audio/choice-hold.mp3'),
@@ -76,6 +79,7 @@ const sounds = {
   bonus1:new Audio('./assets/audio/bonus-1.mp3'),bonus2:new Audio('./assets/audio/bonus-2.mp3'),
   combo:new Audio('./assets/audio/combo.mp3'),finish:new Audio('./assets/audio/finish.mp3'),final5:new Audio('./assets/audio/final-5-seconds.mp3')
 };
+const effectNames=['ui','hold','correct','wrong','question','bonus1','bonus2','combo','finish','final5'];
 sounds.menu.loop=true;sounds.menu.volume=AUDIO_LEVELS.menuMusic;
 sounds.game.loop=true;sounds.game.volume=AUDIO_LEVELS.gameMusic;
 Object.entries(sounds).forEach(([name,audio])=>{audio.preload='auto';if(!['menu','game'].includes(name))audio.volume=AUDIO_LEVELS.effect;});
@@ -91,7 +95,7 @@ function setScreen(name){
   screens.forEach(el => el.classList.toggle('active', el.id === `${name}Screen`));
   stage.classList.toggle('menu-scene', ['menu','settings','guide','loading','result'].includes(name));
   stage.classList.toggle('play-scene', name === 'game');
-  stage.classList.toggle('camera-scene', name === 'camera');
+  stage.classList.toggle('camera-scene', name === 'camera'||name === 'countdown');
   if(name==='menu'){menuVideo.play().catch(()=>{});playMusic('menu');}
   else{menuVideo.pause();if(name!=='game')stopMusic();}
   if(!['game','camera'].includes(name)) pointer.classList.remove('visible');
@@ -101,12 +105,13 @@ async function preload(){
   const bar = $('#loadingBar');
   const text = $('#loadingText');
   const panelAssets=scenarios.flatMap(item=>Object.values(item.panels));
-  const assets = ['./assets/menu-bg.png','./assets/fonts/Mali-Regular.ttf','./assets/fonts/Mali-Bold.ttf',...panelAssets,...voiceAssets];
+  const assets = ['./assets/menu-bg.png','./assets/fonts/Mali-Regular.ttf','./assets/fonts/Mali-Bold.ttf',...panelAssets,...voiceAssets,...effectNames.map(name=>sounds[name].src)];
   let done = 0;
   await Promise.all(assets.map(src => new Promise(resolve => {
     if(src.endsWith('.png')){const img=new Image();img.onload=img.onerror=resolve;img.src=src;}
     else fetch(src).then(resolve).catch(resolve);
   }).then(()=>{done++;bar.style.width=`${Math.round(done/assets.length*100)}%`;text.textContent=`เตรียมพร้อมแล้ว ${done}/${assets.length}`;})));
+  await prepareEffectAudio();
   await new Promise(r=>setTimeout(r,350));
   setScreen('menu');
 }
@@ -114,6 +119,16 @@ async function preload(){
 function ensureAudio(){
   if(!state.audio) state.audio = new (window.AudioContext || window.webkitAudioContext)();
   if(state.audio.state === 'suspended') state.audio.resume().catch(()=>{});
+}
+
+function prepareEffectAudio(){
+  ensureAudio();
+  return Promise.all(effectNames.map(name=>{
+    if(state.audioBuffers.has(name))return Promise.resolve(state.audioBuffers.get(name));
+    if(state.effectLoads.has(name))return state.effectLoads.get(name);
+    const load=fetch(sounds[name].src).then(response=>response.arrayBuffer()).then(data=>state.audio.decodeAudioData(data)).then(buffer=>{state.audioBuffers.set(name,buffer);return buffer;}).catch(()=>null).finally(()=>state.effectLoads.delete(name));
+    state.effectLoads.set(name,load);return load;
+  }));
 }
 
 function stopSound(audio,reset=true){
@@ -127,11 +142,27 @@ function playSound(audio,restart=true){
 }
 
 function playEffect(name,restart=true){
-  const audio=sounds[name];if(audio)playSound(audio,restart);
+  const audio=sounds[name];if(!audio||!state.sound)return;
+  ensureAudio();
+  if(restart)stopEffect(name);
+  const buffer=state.audioBuffers.get(name);
+  if(state.audio?.state==='running'&&buffer){
+    const source=state.audio.createBufferSource(),gain=state.audio.createGain();
+    source.buffer=buffer;gain.gain.value=AUDIO_LEVELS.effect;source.connect(gain).connect(state.audio.destination);
+    state.effectSources.set(name,source);source.onended=()=>{if(state.effectSources.get(name)===source)state.effectSources.delete(name);};source.start();
+    document.documentElement.dataset.lastEffect=name;document.documentElement.dataset.lastEffectMode='webaudio';document.documentElement.dataset.lastEffectAt=String(Date.now());return;
+  }
+  void prepareEffectAudio();playSound(audio,restart);
+  document.documentElement.dataset.lastEffect=name;document.documentElement.dataset.lastEffectMode='media';document.documentElement.dataset.lastEffectAt=String(Date.now());
+}
+
+function stopEffect(name){
+  const source=state.effectSources.get(name);if(source){try{source.stop();}catch{}state.effectSources.delete(name);}
+  const audio=sounds[name];if(audio)stopSound(audio);
 }
 
 function stopEffects(){
-  ['ui','hold','correct','wrong','question','bonus1','bonus2','combo','finish','final5'].forEach(name=>stopSound(sounds[name]));
+  effectNames.forEach(stopEffect);
 }
 
 function playMusic(name){
@@ -164,18 +195,26 @@ function tone(kind='tap'){
 function stopVoice(){
   state.voiceRun++;
   const resolve=state.voiceResolve;state.voiceResolve=null;
-  if(state.voiceAudio){state.voiceAudio.pause();try{state.voiceAudio.currentTime=0;}catch{}state.voiceAudio=null;}
+  if(state.voiceAudio){state.voiceAudio.onended=null;state.voiceAudio.onerror=null;state.voiceAudio.pause();try{state.voiceAudio.currentTime=0;}catch{}state.voiceAudio=null;}
   if(resolve)resolve(false);
   speechSynthesis?.cancel();
+}
+
+function primeVoiceAudio(){
+  if(!state.voice)return Promise.resolve(false);
+  voicePlayer.pause();voicePlayer.src=voiceAssets[0];voicePlayer.volume=0;voicePlayer.muted=false;
+  const attempt=voicePlayer.play();
+  if(!attempt)return Promise.resolve(false);
+  return attempt.then(()=>{voicePlayer.pause();voicePlayer.currentTime=0;voicePlayer.volume=AUDIO_LEVELS.voice;return true;}).catch(()=>{voicePlayer.volume=AUDIO_LEVELS.voice;return false;});
 }
 
 function playVoiceClip(src,run){
   return new Promise(resolve=>{
     if(!state.voice||run!==state.voiceRun||state.screen!=='game'||state.paused){resolve(false);return;}
-    const audio=new Audio(src);let settled=false;
-    const finish=played=>{if(settled)return;settled=true;if(state.voiceAudio===audio){state.voiceAudio=null;state.voiceResolve=null;}resolve(played);};
-    state.voiceAudio=audio;state.voiceResolve=finish;audio.preload='auto';audio.volume=AUDIO_LEVELS.voice;
-    audio.addEventListener('ended',()=>finish(true),{once:true});audio.addEventListener('error',()=>finish(false),{once:true});
+    const audio=voicePlayer;let settled=false;
+    const finish=played=>{if(settled)return;settled=true;audio.onended=null;audio.onerror=null;if(state.voiceAudio===audio){state.voiceAudio=null;state.voiceResolve=null;}resolve(played);};
+    audio.pause();audio.src=src;audio.preload='auto';audio.volume=AUDIO_LEVELS.voice;audio.muted=false;
+    state.voiceAudio=audio;state.voiceResolve=finish;audio.onended=()=>finish(true);audio.onerror=()=>finish(false);
     audio.play().catch(()=>finish(false));
   });
 }
@@ -248,7 +287,7 @@ function updatePointer(x,y,now){
 }
 
 function clearHover(){
-  stopSound(sounds.hold);choices.forEach(c=>{c.classList.remove('hovered');c.style.setProperty('--hold','0deg');c.style.setProperty('--hold-scale','1');});state.hover=null;state.hoverStarted=0;
+  stopEffect('hold');choices.forEach(c=>{c.classList.remove('hovered');c.style.setProperty('--hold','0deg');c.style.setProperty('--hold-scale','1');});state.hover=null;state.hoverStarted=0;
 }
 
 function nearestHand(hands=[]){
@@ -280,7 +319,7 @@ async function trackingLoop(now){
 function showScenario(){
   clearAnswerTimers();resetAnswerEffects();stopVoice();
   const feedbackEl=$('#feedback');clearTimeout(feedbackEl._timer);feedbackEl.className='feedback';feedbackEl.textContent='';
-  ['hold','correct','question','bonus1','bonus2','combo'].forEach(name=>stopSound(sounds[name]));
+  ['hold','correct','question','bonus1','bonus2','combo'].forEach(stopEffect);
   state.locked=false;state.firstAttempt=true;clearHover();
   const item=state.deck[state.index];
   const board=$('#scenarioBoardImage');
@@ -370,13 +409,26 @@ function selectChoice(index,source='touch'){
   });
 }
 
+async function runStartCountdown(run){
+  const number=$('#countdownValue');
+  for(const value of [4,3,2,1]){
+    if(run!==state.startRun)return false;
+    number.textContent=String(value);number.classList.remove('pop');void number.offsetWidth;number.classList.add('pop');
+    await new Promise(resolve=>setTimeout(resolve,800));
+  }
+  return run===state.startRun;
+}
+
 async function startGame(){
-  ensureAudio();stopEffects();stopVoice();tone('tap');playMusic('game');
+  const run=++state.startRun;
+  ensureAudio();stopEffects();stopVoice();const voiceReady=primeVoiceAudio();tone('tap');playMusic('game');
   const previewIndex=Number(params.get('scenario'))-1;
   const fullDeck=Number.isInteger(previewIndex)&&scenarios[previewIndex]?[scenarios[previewIndex],...shuffle(scenarios.filter((_,i)=>i!==previewIndex))]:shuffle(scenarios);
   state.deck=fullDeck.slice(0,state.missionCount);
   state.index=0;state.score=0;state.streak=0;state.maxStreak=0;state.safeFirst=0;state.retries=0;state.lives=3;state.timeLeft=state.duration;state.lastFivePlayed=false;state.running=true;state.paused=false;
-  setScreen('game');await startCamera();showScenario();
+  state.locked=true;setScreen('countdown');await startCamera();await Promise.race([voiceReady,new Promise(resolve=>setTimeout(resolve,500))]);
+  if(!await runStartCountdown(run))return;
+  setScreen('game');showScenario();
   clearInterval(state.timerId);state.timerId=setInterval(()=>{if(state.running&&!state.paused&&state.mode==='timed'){state.timeLeft-=.25;if(state.timeLeft<=5&&state.timeLeft>0&&!state.lastFivePlayed){state.lastFivePlayed=true;playEffect('final5');}updateHud();if(state.timeLeft<=0)finishGame();}},250);
 }
 
@@ -398,7 +450,7 @@ function pauseGame(auto=false){
 function resumeGame(){if(!state.running)return;ensureAudio();state.paused=false;setScreen('game');playMusic('game');tone('tap');}
 
 function goMenu(){
-  state.running=false;state.paused=false;clearInterval(state.timerId);clearAnswerTimers();resetAnswerEffects();stopVoice();stopMusic();stopEffects();clearHover();stopCamera();setScreen('menu');
+  state.startRun++;state.running=false;state.paused=false;clearInterval(state.timerId);clearAnswerTimers();resetAnswerEffects();stopVoice();stopMusic();stopEffects();clearHover();stopCamera();setScreen('menu');
 }
 
 function setMode(mode){state.mode=mode;$$('[data-mode]').forEach(b=>b.classList.toggle('selected',b.dataset.mode===mode));$('#durationRow').style.opacity=mode==='timed'?'1':'.45';tone('tap');}
