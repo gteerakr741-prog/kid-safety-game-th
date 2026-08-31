@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#101820">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>คิดก่อนเลือก: ภารกิจพิทักษ์ตัวเอง</title>
+  <link rel="icon" href="data:,">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css?v=24">
+</head>
+<body>
+  <main id="app">
+    <section id="stage" class="stage menu-scene" aria-live="polite">
+      <video id="camera" muted autoplay playsinline></video>
+      <div id="sceneBackdrop" class="scene-backdrop"></div>
+      <video id="menuVideo" class="menu-video" muted loop autoplay playsinline preload="metadata" poster="./assets/ตัวอย่างเมนู-พร้อมปุ่ม.png">
+        <source src="./assets/menu-loop-lite.mp4" type="video/mp4">
+      </video>
+      <div id="cameraShade" class="camera-shade"></div>
+
+      <section id="loadingScreen" class="screen active loading-screen">
+        <div class="loading-emblem" aria-hidden="true">🛡️</div>
+        <h1>กำลังเตรียมเมืองพิทักษ์</h1>
+        <div class="loading-track"><span id="loadingBar"></span></div>
+        <p id="loadingText">กำลังเตรียมภาพและระบบเกม...</p>
+      </section>
+
+      <section id="menuScreen" class="screen menu-screen">
+        <header class="game-title">
+          <p>เกม AR ฝึกทักษะความปลอดภัย</p>
+          <h1>คิดก่อนเลือก</h1>
+          <h2>ภารกิจพิทักษ์ตัวเอง</h2>
+          <div class="motto">ไม่รับ · ไม่ลอง · ไม่ไป · บอกผู้ใหญ่</div>
+        </header>
+        <div class="menu-actions">
+          <button class="menu-button green" data-action="start"><span class="button-icon">▶</span><span>เริ่มภารกิจ</span></button>
+          <button class="menu-button blue" data-action="camera"><span class="button-icon">◎</span><span>ทดสอบกล้อง</span></button>
+          <button class="menu-button orange" data-action="settings"><span class="button-icon">⚙</span><span>ตั้งค่า</span></button>
+          <button class="menu-button purple" data-action="guide"><span class="button-icon">?</span><span>วิธีเล่น</span></button>
+        </div>
+      </section>
+
+      <section id="settingsScreen" class="screen panel-screen">
+        <div class="panel wide-panel">
+          <button class="close-button" data-action="menu" aria-label="ปิด">×</button>
+          <h2>ตั้งค่าภารกิจ</h2>
+          <div class="setting-row">
+            <div><strong>รูปแบบการเล่น</strong><small>เลือกเล่นสบาย ๆ หรือแข่งกับเวลา</small></div>
+            <div class="segmented" role="group">
+              <button data-mode="learn" class="selected">ฝึกเรียนรู้</button>
+              <button data-mode="timed">จับเวลา</button>
+            </div>
+          </div>
+          <div class="setting-row" id="durationRow">
+            <div><strong>เวลาเล่น</strong><small>ปรับได้ตามอายุและจำนวนผู้เล่น</small></div>
+            <div class="segmented" role="group">
+              <button data-duration="60" class="selected">60 วิ</button>
+              <button data-duration="120">120 วิ</button>
+              <button data-duration="180">180 วิ</button>
+            </div>
+          </div>
+          <label class="toggle-row"><span><strong>เสียงอ่านคำ</strong><small>อ่านหลังผู้เล่นเลือกเท่านั้น</small></span><input id="voiceToggle" type="checkbox" checked><i></i></label>
+          <label class="toggle-row"><span><strong>เสียงเพลงและเอฟเฟกต์</strong><small>ปิดได้เมื่อต้องการเล่นเงียบ ๆ</small></span><input id="soundToggle" type="checkbox" checked><i></i></label>
+          <button class="primary-button" data-action="menu">บันทึกและกลับเมนู</button>
+        </div>
+      </section>
+
+      <section id="guideScreen" class="screen panel-screen">
+        <div class="panel wide-panel guide-panel">
+          <button class="close-button" data-action="menu" aria-label="ปิด">×</button>
+          <h2>วิธีเล่น</h2>
+          <div class="guide-steps">
+            <article><span>1</span><strong>อ่านสถานการณ์</strong><p>คิดก่อนว่าทางเลือกไหนปลอดภัยที่สุด</p></article>
+            <article><span>2</span><strong>ชี้แล้วค้าง</strong><p>เล็งคำตอบให้ครบ 3 วินาที และเปลี่ยนใจก่อนได้</p></article>
+            <article><span>3</span><strong>ขอความช่วยเหลือ</strong><p>จำไว้ว่าเรื่องอันตรายต้องบอกผู้ใหญ่ที่ไว้ใจ</p></article>
+          </div>
+          <div class="safety-rules"><b>ไม่รับ</b><b>ไม่ลอง</b><b>ไม่ไป</b><b>บอกผู้ใหญ่</b></div>
+          <button class="primary-button" data-action="start">พร้อมแล้ว เริ่มเล่น</button>
+        </div>
+      </section>
+
+      <section id="cameraScreen" class="screen camera-screen">
+        <div class="camera-test-header">
+          <button class="back-button" data-action="menu">‹ กลับ</button>
+          <div><h2>ทดสอบกล้องและมือ</h2><p id="cameraStatus">กำลังเปิดกล้อง...</p></div>
+        </div>
+        <div class="test-target" id="testTarget"><span>ชี้ค้างตรงนี้</span><i></i></div>
+        <div class="camera-help">ยกมือให้เห็นทั้งฝ่ามือ · อยู่ห่างกล้องประมาณ 1–2 เมตร</div>
+      </section>
+
+      <section id="gameScreen" class="screen game-screen">
+        <header class="hud">
+          <div class="hud-item"><span class="hud-icon">🛡️</span><div><small>ภารกิจ</small><strong id="progressValue">1/12</strong></div></div>
+          <div class="hud-item"><span class="hud-icon">⭐</span><div><small>คะแนน</small><strong id="scoreValue">0</strong></div></div>
+          <div class="hud-item"><span class="hud-icon">⏱</span><div><small>เวลา</small><strong id="timeValue">--</strong></div></div>
+          <div class="hud-item compact hearts-item"><span class="hud-icon">❤</span><div><small>หัวใจ</small><strong id="heartValue" class="heart-value" aria-label="เหลือ 3 หัวใจ"><span>♥</span><span>♥</span><span>♥</span></strong><strong id="streakValue" class="visually-hidden">0</strong></div></div>
+          <button id="pauseButton" class="pause-button" aria-label="หยุดเกม"><span></span><span></span></button>
+        </header>
+        <div class="scenario-board">
+          <div class="question-frame panel-frame"><img id="scenarioBoardImage" class="scenario-board-image" alt="ภาพโจทย์"></div>
+          <p id="questionText" class="visually-hidden">ถ้ามีคนชวนไปลองสิ่งที่ไม่รู้จัก เราควรทำอย่างไร?</p>
+          <span id="scenarioPlace" class="visually-hidden">ที่โรงเรียน</span>
+          <div id="feedback" class="feedback" role="status"></div>
+          <div class="choices">
+            <button class="choice safe-zone" data-choice="0" aria-label="ตัวเลือกซ้าย">
+              <img class="choice-slice" alt=""><span class="choice-text visually-hidden"></span><i class="hold-ring"></i>
+            </button>
+            <button class="choice safe-zone" data-choice="1" aria-label="ตัวเลือกขวา">
+              <img class="choice-slice" alt=""><span class="choice-text visually-hidden"></span><i class="hold-ring"></i>
+            </button>
+          </div>
+        </div>
+        <div class="input-hint"><span id="trackingDot"></span><b id="trackingText">ชี้ค้าง 3 วินาที หรือแตะคำตอบ</b><em>คีย์บอร์ด: 1 / 2</em></div>
+      </section>
+
+      <div id="effectsLayer" class="effects-layer" aria-hidden="true">
+        <div id="dangerFlash" class="danger-flash"></div>
+        <div id="fireworks" class="fireworks"></div>
+      </div>
+
+      <section id="resultScreen" class="screen result-screen">
+        <div class="result-panel">
+          <div class="result-shield">🛡️</div>
+          <p id="resultRank">ผู้พิทักษ์ฝึกหัด</p>
+          <h2>ภารกิจสำเร็จ!</h2>
+          <div class="final-score"><small>คะแนนรวม</small><strong id="finalScore">0</strong></div>
+          <div class="result-stats">
+            <div><strong id="safeCount">0</strong><span>เลือกปลอดภัยครั้งแรก</span></div>
+            <div><strong id="maxStreak">0</strong><span>ตอบถูกต่อเนื่องสูงสุด</span></div>
+            <div><strong id="retryCount">0</strong><span>บทเรียนที่ได้ลองใหม่</span></div>
+          </div>
+          <div id="badgeList" class="badge-list"></div>
+          <div class="result-actions">
+            <button class="primary-button" data-action="start">เล่นอีกครั้ง</button>
+            <button class="secondary-button" data-action="menu">กลับหน้าเมนู</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="pauseScreen" class="screen pause-screen">
+        <div class="panel pause-panel">
+          <div class="pause-mark">Ⅱ</div><h2>หยุดพัก</h2><p>เกมและเวลาถูกหยุดไว้แล้ว</p>
+          <button class="primary-button" data-action="resume">เล่นต่อ</button>
+          <button class="secondary-button" data-action="menu">ออกไปหน้าเมนู</button>
+        </div>
+      </section>
+
+      <div id="handPointer" class="hand-pointer"><span>✦</span></div>
+      <button id="fullscreenButton" class="floating-control fullscreen-control" aria-label="เต็มจอ">⛶</button>
+      <button id="muteButton" class="floating-control mute-control" aria-label="เปิดหรือปิดเสียง">🔊</button>
+      <div id="rotatePrompt" class="rotate-prompt"><span>↻</span><strong>หมุนอุปกรณ์เป็นแนวนอน</strong><p>เพื่อให้เห็นตัวเลือกครบและเล่นได้ถนัด</p></div>
+    </section>
+  </main>
+  <script type="module" src="app.js?v=21"></script>
+</body>
+</html>

@@ -1,0 +1,412 @@
+const $ = (s, root = document) => root.querySelector(s);
+const $$ = (s, root = document) => [...root.querySelectorAll(s)];
+
+const scenarios = [
+  {place:'หลังอาคารเรียน', icon:'🚭', people:['🧑','🧒'], q:'รุ่นพี่ชวนไปหลังอาคาร แล้วบอกให้ลองสูบบุหรี่ไฟฟ้า จะทำอย่างไร?', safe:['✋','ปฏิเสธ แล้วบอกครู'], unsafe:['➡️','เดินตามรุ่นพี่ไป'], why:'ของที่ไม่รู้จักไม่ควรลอง ให้ออกจากจุดนั้นและบอกผู้ใหญ่ที่ไว้ใจ', cat:'refuse', images:{question:'./assets/scenarios/01/question.webp',safe:'./assets/scenarios/01/safe.webp',risk:'./assets/scenarios/01/risk.webp'}},
+  {place:'สนามเด็กเล่น', icon:'🍬', people:['🧒','👧'], q:'เพื่อนยื่นของสีสวยคล้ายลูกอม บอกว่ากินแล้วสนุกมาก จะเลือกอะไร?', safe:['🛡️','ไม่รับ และนำไปให้ครูตรวจดู'], unsafe:['😋','รับมากิน เพราะดูเหมือนขนม'], why:'ของกินที่ไม่รู้ที่มาอาจเป็นอันตราย อย่ารับหรือชิมเอง', cat:'unknown'},
+  {place:'หน้าโรงเรียน', icon:'🚗', people:['🧔','🧒'], q:'คนที่ไม่รู้จักบอกว่า ผู้ปกครองให้มารับกลับบ้าน เราควรทำอย่างไร?', safe:['📞','อยู่กับครู แล้วโทรตรวจสอบผู้ปกครอง'], unsafe:['🚗','ขึ้นรถไป เพราะเขารู้ชื่อเรา'], why:'อย่าไปกับใครโดยยังไม่ได้ตรวจสอบกับผู้ปกครองหรือครู', cat:'leave'},
+  {place:'สวนสาธารณะ', icon:'🐕', people:['🧑','👧'], q:'ผู้ใหญ่ที่ไม่คุ้นเคยชวนไปช่วยหาสัตว์เลี้ยงในที่ลับตาคน จะทำอย่างไร?', safe:['🗣️','ปฏิเสธ แล้วบอกผู้ใหญ่ที่อยู่ใกล้'], unsafe:['🔎','เดินตามไปช่วยหาเพียงสองคน'], why:'เด็กไม่ควรตามคนอื่นไปยังที่ลับตา ให้ปฏิเสธและขอความช่วยเหลือ', cat:'leave'},
+  {place:'สนามโรงเรียน', icon:'💊', people:['👧','🧒'], q:'พบเม็ดยาไม่ทราบชนิดตกอยู่บนพื้น ควรทำอย่างไร?', safe:['👩‍🏫','ไม่จับ และรีบบอกครู'], unsafe:['👃','หยิบขึ้นมาดมหรือชิมดู'], why:'ยาไม่ทราบชนิดห้ามจับ ดม หรือชิม ให้ผู้ใหญ่เป็นผู้จัดการ', cat:'unknown'},
+  {place:'ห้องกิจกรรม', icon:'🧴', people:['🧒','🧑'], q:'เพื่อนชวนดมของเหลวกลิ่นแรงในภาชนะที่ไม่มีฉลาก เราควรทำอย่างไร?', safe:['🚶','ถอยออกมา แล้วเรียกครู'], unsafe:['👃','ลองดมใกล้ ๆ เพื่อดูว่าคืออะไร'], why:'สารที่ไม่รู้จักอาจเป็นพิษ ต้องถอยห่างและแจ้งผู้ใหญ่', cat:'refuse'},
+  {place:'งานกีฬา', icon:'🥤', people:['🧒','👧'], q:'มีคนยื่นแก้วเครื่องดื่มที่เปิดไว้แล้วให้เรา ควรเลือกแบบไหน?', safe:['🥤','ไม่รับ และขอแก้วใหม่จากผู้ดูแล'], unsafe:['😋','ดื่มเลย เพราะกำลังกระหาย'], why:'รับอาหารและเครื่องดื่มจากผู้ดูแลที่ไว้ใจและเห็นว่าเปิดใหม่', cat:'unknown'},
+  {place:'ระหว่างกลับบ้าน', icon:'🤝', people:['🧒','🧒'], q:'เพื่อนพูดว่า “ถ้าเป็นเพื่อนกันจริง ต้องลองนี่สิ” เราควรตอบอย่างไร?', safe:['💪','พูดว่า “ไม่” แล้วออกมาหาผู้ใหญ่'], unsafe:['🤐','ยอมลอง เพราะกลัวเพื่อนไม่รัก'], why:'เพื่อนที่ดีต้องเคารพคำปฏิเสธ เรามีสิทธิ์พูดว่าไม่และเดินออกมา', cat:'refuse'},
+  {place:'ในชุมชน', icon:'🤫', people:['👧','🧒'], q:'เพื่อนขอให้เก็บเป็นความลับว่าเขาแอบสูบบุหรี่ เราควรทำอย่างไร?', safe:['🗣️','บอกผู้ใหญ่ที่ไว้ใจเพื่อช่วยเพื่อน'], unsafe:['🤐','เก็บเงียบไว้ตามที่เพื่อนขอ'], why:'ความลับที่เกี่ยวกับอันตรายต้องบอกผู้ใหญ่ เพื่อให้ทุกคนปลอดภัย', cat:'tell'},
+  {place:'โลกออนไลน์', icon:'📱', people:['🧒','👤'], q:'เพื่อนที่รู้จักทางออนไลน์ชวนไปพบกันตามลำพัง เราควรทำอย่างไร?', safe:['👪','ไม่ไป และนำข้อความให้ผู้ปกครองดู'], unsafe:['📍','แอบไปพบ เพราะคุยกันมานานแล้ว'], why:'อย่านัดพบคนจากออนไลน์ตามลำพัง ต้องให้ผู้ปกครองรับรู้เสมอ', cat:'tell'},
+  {place:'ห้องน้ำโรงเรียน', icon:'🆘', people:['👧','🧒'], q:'เพื่อนกินของไม่ทราบชนิดแล้วเวียนหัว เราควรทำอย่างไรทันที?', safe:['🆘','เรียกครูหรือผู้ใหญ่ให้ช่วยทันที'], unsafe:['🙈','พาเพื่อนไปหลบ เพราะกลัวถูกดุ'], why:'เมื่อมีคนเจ็บป่วยจากสิ่งไม่ทราบชนิด ต้องรีบขอความช่วยเหลือทันที', cat:'tell'},
+  {place:'ที่บ้าน', icon:'💊', people:['🧒','👩'], q:'เราปวดหัวและเห็นยาวางอยู่บนโต๊ะ ควรทำอย่างไร?', safe:['👪','ถามผู้ปกครองก่อนกินยา'], unsafe:['💊','หยิบกินเองตามจำนวนที่คิดว่าใช่'], why:'เด็กควรกินยาเมื่อผู้ปกครองหรือบุคลากรทางการแพทย์ให้เท่านั้น', cat:'unknown'}
+];
+
+scenarios.forEach((item,index)=>{
+  const number=String(index+1).padStart(2,'0');
+  const base=`./assets/scenarios/${number}`;
+  item.panels={question:`${base}/question-panel.png?v=3`,safe:`${base}/safe-panel.png?v=3`,risk:`${base}/risk-panel.png?v=3`};
+  item.voice={question:`./assets/voice/q${number}.wav`,safe:`./assets/voice/safe${number}.wav`,risk:`./assets/voice/risk${number}.wav`};
+});
+
+const optionVoices=['./assets/voice/option-1.wav','./assets/voice/option-2.wav'];
+const feedbackVoices={
+  correct:['./assets/voice/correct-1.wav','./assets/voice/correct-2.wav','./assets/voice/correct-3.wav','./assets/voice/correct-4.wav'],
+  wrong:['./assets/voice/wrong-1.wav','./assets/voice/wrong-2.wav']
+};
+const voiceAssets=[...scenarios.flatMap(item=>Object.values(item.voice)),...optionVoices,...feedbackVoices.correct,...feedbackVoices.wrong];
+
+const state = {
+  screen:'loading', mode:'learn', duration:60, timeLeft:60, sound:true, voice:true,
+  running:false, paused:false, index:0, score:0, streak:0, maxStreak:0, safeFirst:0, lives:3,
+  retries:0, firstAttempt:true, deck:[], shownOptions:[], locked:false, lastFivePlayed:false,
+  stream:null, handLandmarker:null, handLoading:false, lastDetect:0, lastFrame:-1,
+  hover:null, hoverStarted:0, dwellMs:650, choiceDwellMs:3000, timerId:null, answerTimer:null, advanceTimer:null,
+  audio:null, voiceAudio:null, voiceResolve:null, voiceRun:0, testHold:0
+};
+
+const params = new URLSearchParams(location.search);
+if(params.get('sound') === 'off') state.sound = false;
+if(params.get('voice') === 'off') state.voice = false;
+
+const stage = $('#stage');
+const camera = $('#camera');
+const menuVideo = $('#menuVideo');
+const pointer = $('#handPointer');
+const screens = $$('.screen');
+const choices = $$('.choice');
+const sounds = {
+  menu:new Audio('./assets/audio/menu-music.mp3'),game:new Audio('./assets/audio/game-music.mp3'),
+  ui:new Audio('./assets/audio/ui-click.mp3'),hold:new Audio('./assets/audio/choice-hold.mp3'),
+  correct:new Audio('./assets/audio/correct.mp3'),wrong:new Audio('./assets/audio/wrong.mp3'),question:new Audio('./assets/audio/question-change.mp3'),
+  bonus1:new Audio('./assets/audio/bonus-1.mp3'),bonus2:new Audio('./assets/audio/bonus-2.mp3'),
+  combo:new Audio('./assets/audio/combo.mp3'),finish:new Audio('./assets/audio/finish.mp3'),final5:new Audio('./assets/audio/final-5-seconds.mp3')
+};
+sounds.menu.loop=true;sounds.menu.volume=1;
+sounds.game.loop=true;sounds.game.volume=.4;
+Object.entries(sounds).forEach(([name,audio])=>{audio.preload='auto';if(!['menu','game'].includes(name))audio.volume=.8;});
+
+function shuffle(items){
+  const copy = [...items];
+  for(let i=copy.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[copy[i],copy[j]]=[copy[j],copy[i]];}
+  return copy;
+}
+
+function setScreen(name){
+  state.screen = name;
+  screens.forEach(el => el.classList.toggle('active', el.id === `${name}Screen`));
+  stage.classList.toggle('menu-scene', ['menu','settings','guide','loading','result'].includes(name));
+  stage.classList.toggle('play-scene', name === 'game');
+  stage.classList.toggle('camera-scene', name === 'camera');
+  if(name==='menu'){menuVideo.play().catch(()=>{});playMusic('menu');}
+  else{menuVideo.pause();if(name!=='game')stopMusic();}
+  if(!['game','camera'].includes(name)) pointer.classList.remove('visible');
+}
+
+async function preload(){
+  const bar = $('#loadingBar');
+  const text = $('#loadingText');
+  const panelAssets=scenarios.flatMap(item=>Object.values(item.panels));
+  const assets = ['./assets/menu-bg.png','./assets/fonts/Mali-Regular.ttf','./assets/fonts/Mali-Bold.ttf',...panelAssets,...voiceAssets];
+  let done = 0;
+  await Promise.all(assets.map(src => new Promise(resolve => {
+    if(src.endsWith('.png')){const img=new Image();img.onload=img.onerror=resolve;img.src=src;}
+    else fetch(src).then(resolve).catch(resolve);
+  }).then(()=>{done++;bar.style.width=`${Math.round(done/assets.length*100)}%`;text.textContent=`เตรียมพร้อมแล้ว ${done}/${assets.length}`;})));
+  await new Promise(r=>setTimeout(r,350));
+  setScreen('menu');
+}
+
+function ensureAudio(){
+  if(!state.audio) state.audio = new (window.AudioContext || window.webkitAudioContext)();
+  if(state.audio.state === 'suspended') state.audio.resume().catch(()=>{});
+}
+
+function stopSound(audio,reset=true){
+  audio.pause();if(reset){try{audio.currentTime=0;}catch{}}
+}
+
+function playSound(audio,restart=true){
+  if(!state.sound)return;
+  if(restart){try{audio.currentTime=0;}catch{}}
+  audio.play().catch(()=>{});
+}
+
+function playEffect(name,restart=true){
+  const audio=sounds[name];if(audio)playSound(audio,restart);
+}
+
+function stopEffects(){
+  ['ui','hold','correct','wrong','question','bonus1','bonus2','combo','finish','final5'].forEach(name=>stopSound(sounds[name]));
+}
+
+function playMusic(name){
+  const target=sounds[name];
+  Object.entries(sounds).forEach(([key,audio])=>{if(['menu','game'].includes(key)&&audio!==target)stopSound(audio);});
+  if(target&&state.sound)playSound(target,false);
+}
+
+function stopMusic(){stopSound(sounds.menu);stopSound(sounds.game);}
+
+function syncAudioForScreen(){
+  if(!state.sound){stopMusic();stopEffects();return;}
+  if(state.screen==='menu')playMusic('menu');
+  else if(state.screen==='game'&&!state.paused)playMusic('game');
+}
+
+function tone(kind='tap'){
+  if(!state.sound) return;
+  if(kind==='tap'){playEffect('ui');return;}
+  ensureAudio();
+  const ctx=state.audio, now=ctx.currentTime, gain=ctx.createGain(), osc=ctx.createOscillator();
+  const table={tap:[440,.07,.12],good:[660,.18,.2],wrong:[185,.2,.24],finish:[784,.35,.22]};
+  const [freq,len,vol]=table[kind]||table.tap;
+  osc.type=kind==='wrong'?'sawtooth':'sine';osc.frequency.setValueAtTime(freq,now);
+  if(kind==='good')osc.frequency.exponentialRampToValueAtTime(990,now+len);
+  gain.gain.setValueAtTime(vol,now);gain.gain.exponentialRampToValueAtTime(.001,now+len);
+  osc.connect(gain).connect(ctx.destination);osc.start(now);osc.stop(now+len);
+}
+
+function stopVoice(){
+  state.voiceRun++;
+  const resolve=state.voiceResolve;state.voiceResolve=null;
+  if(state.voiceAudio){state.voiceAudio.pause();try{state.voiceAudio.currentTime=0;}catch{}state.voiceAudio=null;}
+  if(resolve)resolve(false);
+  speechSynthesis?.cancel();
+}
+
+function playVoiceClip(src,run){
+  return new Promise(resolve=>{
+    if(!state.voice||run!==state.voiceRun||state.screen!=='game'||state.paused){resolve(false);return;}
+    const audio=new Audio(src);let settled=false;
+    const finish=played=>{if(settled)return;settled=true;if(state.voiceAudio===audio){state.voiceAudio=null;state.voiceResolve=null;}resolve(played);};
+    state.voiceAudio=audio;state.voiceResolve=finish;audio.preload='auto';audio.volume=1;
+    audio.addEventListener('ended',()=>finish(true),{once:true});audio.addEventListener('error',()=>finish(false),{once:true});
+    audio.play().catch(()=>finish(false));
+  });
+}
+
+async function playVoiceSequence(paths,{delay=0,gap=90}={}){
+  stopVoice();const run=state.voiceRun;
+  if(!state.voice)return false;
+  if(delay){await new Promise(resolve=>setTimeout(resolve,delay));if(run!==state.voiceRun)return false;}
+  for(const src of paths){
+    if(run!==state.voiceRun||!state.voice)return false;
+    await playVoiceClip(src,run);
+    if(run!==state.voiceRun)return false;
+    if(gap)await new Promise(resolve=>setTimeout(resolve,gap));
+  }
+  return run===state.voiceRun;
+}
+
+async function startCamera(){
+  if(state.stream?.active) return true;
+  if(!navigator.mediaDevices?.getUserMedia){$('#cameraStatus').textContent='อุปกรณ์นี้ไม่รองรับกล้องผ่านหน้านี้';return false;}
+  try{
+    state.stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:640,max:960},height:{ideal:360,max:540},frameRate:{ideal:24,max:30}}});
+    camera.srcObject=state.stream;await camera.play();stage.classList.add('camera-on');
+    $('#cameraStatus').textContent='เปิดกล้องแล้ว กำลังเตรียมระบบตรวจมือ';
+    loadHandModel();return true;
+  }catch(err){
+    $('#cameraStatus').textContent='เปิดกล้องไม่ได้ ยังเล่นด้วยการแตะหน้าจอได้';
+    $('#trackingText').textContent='แตะคำตอบเพื่อเล่น';return false;
+  }
+}
+
+function stopCamera(){
+  state.stream?.getTracks().forEach(t=>t.stop());state.stream=null;camera.srcObject=null;stage.classList.remove('camera-on');
+}
+
+async function loadHandModel(){
+  if(state.handLandmarker || state.handLoading) return;
+  state.handLoading=true;
+  try{
+    const {FilesetResolver,HandLandmarker}=await import('./assets/vendor/mediapipe/vision_bundle.mjs');
+    const vision=await FilesetResolver.forVisionTasks('./assets/vendor/mediapipe/wasm');
+    const common={baseOptions:{modelAssetPath:'./assets/vendor/mediapipe/models/hand_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numHands:1,minHandDetectionConfidence:.5,minHandPresenceConfidence:.45,minTrackingConfidence:.45};
+    try{state.handLandmarker=await HandLandmarker.createFromOptions(vision,common);}
+    catch{state.handLandmarker=await HandLandmarker.createFromOptions(vision,{...common,baseOptions:{...common.baseOptions,delegate:'CPU'}});}
+    $('#cameraStatus').textContent='พร้อมแล้ว ชี้ค้างบนคำตอบให้ครบ 3 วินาที';
+    $('#trackingText').textContent='ชี้ค้าง 3 วินาที หรือแตะคำตอบ';
+  }catch(err){
+    console.warn('Hand tracking unavailable',err);$('#cameraStatus').textContent='ตรวจมือไม่สำเร็จ ใช้การแตะหน้าจอแทนได้';
+  }finally{state.handLoading=false;}
+}
+
+function updatePointer(x,y,now){
+  pointer.style.transform=`translate3d(${x}px,${y}px,0)`;pointer.classList.add('visible');
+  if(state.screen==='camera'){
+    const r=$('#testTarget').getBoundingClientRect();
+    const inside=x>=r.left-stage.getBoundingClientRect().left&&x<=r.right-stage.getBoundingClientRect().left&&y>=r.top-stage.getBoundingClientRect().top&&y<=r.bottom-stage.getBoundingClientRect().top;
+    if(inside){if(!state.testHold)state.testHold=now;const p=Math.min(1,(now-state.testHold)/state.dwellMs);$('#testTarget i').style.clipPath=`inset(${100-p*100}% 0 0)`;if(p>=1){$('#testTarget').classList.add('success');$('#testTarget span').textContent='ตรวจจับมือสำเร็จ!';tone('good');state.testHold=now+999999;}}
+    else{state.testHold=0;$('#testTarget i').style.clipPath='inset(100% 0 0)';}
+    return;
+  }
+  if(state.screen!=='game'||state.paused||state.locked)return;
+  const stageRect=stage.getBoundingClientRect();
+  const hit=choices.findIndex(c=>{const r=c.getBoundingClientRect();return x>=r.left-stageRect.left&&x<=r.right-stageRect.left&&y>=r.top-stageRect.top&&y<=r.bottom-stageRect.top;});
+  if(hit<0){clearHover();return;}
+  if(state.hover!==hit){clearHover();state.hover=hit;state.hoverStarted=now;choices[hit].classList.add('hovered');playEffect('hold');}
+  const p=Math.min(1,(now-state.hoverStarted)/state.choiceDwellMs);
+  choices[hit].style.setProperty('--hold',`${p*360}deg`);
+  choices[hit].style.setProperty('--hold-scale',String(1.02+p*.16));
+  if(p>=1){clearHover();selectChoice(hit,'hand');}
+}
+
+function clearHover(){
+  stopSound(sounds.hold);choices.forEach(c=>{c.classList.remove('hovered');c.style.setProperty('--hold','0deg');c.style.setProperty('--hold-scale','1');});state.hover=null;state.hoverStarted=0;
+}
+
+async function trackingLoop(now){
+  if(state.handLandmarker&&state.stream?.active&&!state.paused&&now-state.lastDetect>=66&&camera.readyState>=2&&camera.currentTime!==state.lastFrame){
+    state.lastDetect=now;state.lastFrame=camera.currentTime;
+    try{
+      const result=state.handLandmarker.detectForVideo(camera,performance.now());
+      const tip=result.landmarks?.[0]?.[8];
+      if(tip){
+        const r=stage.getBoundingClientRect();updatePointer((1-tip.x)*r.width,tip.y*r.height,now);
+        $('#trackingDot').classList.add('ready');
+      }else{pointer.classList.remove('visible');clearHover();$('#trackingDot').classList.remove('ready');}
+    }catch{}
+  }
+  requestAnimationFrame(trackingLoop);
+}
+
+function showScenario(){
+  clearAnswerTimers();resetAnswerEffects();stopVoice();
+  const feedbackEl=$('#feedback');clearTimeout(feedbackEl._timer);feedbackEl.className='feedback';feedbackEl.textContent='';
+  ['hold','correct','question','bonus1','bonus2','combo'].forEach(name=>stopSound(sounds[name]));
+  state.locked=false;state.firstAttempt=true;clearHover();
+  const item=state.deck[state.index];
+  const board=$('#scenarioBoardImage');
+  board.src=item.panels.question;board.alt=item.q;
+  $('#progressValue').textContent=`${state.index+1}/${state.deck.length}`;
+  $('#questionText').textContent=item.q;$('#scenarioPlace').textContent=item.place;
+  const opts=shuffle([{safe:true,icon:item.safe[0],text:item.safe[1]},{safe:false,icon:item.unsafe[0],text:item.unsafe[1]}]);
+  state.shownOptions=opts;
+  choices.forEach((c,i)=>{
+    c.classList.remove('pending','correct','wrong');c.disabled=false;c.dataset.optionNumber=String(i+1);c.dataset.safe=String(opts[i].safe);c.setAttribute('aria-label',`ตัวเลือกที่ ${i+1} ${opts[i].text}`);
+    c.querySelector('.choice-text').textContent=opts[i].text;
+    const image=c.querySelector('.choice-slice');image.src=opts[i].safe?item.panels.safe:item.panels.risk;image.alt=opts[i].text;
+  });
+  if(state.index>0)playEffect('question');
+  playVoiceSequence([item.voice.question,optionVoices[0],opts[0].safe?item.voice.safe:item.voice.risk,optionVoices[1],opts[1].safe?item.voice.safe:item.voice.risk]);
+  updateHud();
+}
+
+function updateHud(){
+  $('#scoreValue').textContent=state.score;$('#streakValue').textContent=state.streak;
+  $('#timeValue').textContent=state.mode==='timed'?Math.max(0,Math.ceil(state.timeLeft)):'∞';
+  const hearts=$('#heartValue');hearts.innerHTML=Array.from({length:3},(_,index)=>`<span class="${index<state.lives?'full':'empty'}">♥</span>`).join('');hearts.setAttribute('aria-label',`เหลือ ${state.lives} หัวใจ`);
+}
+
+function feedback(text,type,duration=1150){
+  const el=$('#feedback');el.textContent=text;el.className=`feedback ${type} show`;
+  clearTimeout(el._timer);el._timer=setTimeout(()=>{el.className='feedback';el.textContent='';},duration);
+}
+
+function clearAnswerTimers(){
+  clearTimeout(state.answerTimer);clearTimeout(state.advanceTimer);
+  state.answerTimer=null;state.advanceTimer=null;
+}
+
+function resetAnswerEffects(){
+  stage.classList.remove('wrong-impact');$('#dangerFlash').classList.remove('show');
+  $('#fireworks').replaceChildren();$('#effectsLayer').classList.remove('active');
+  choices.forEach(c=>{c.classList.remove('pending','correct','wrong');c.disabled=false;});
+}
+
+function launchFireworks(big=false){
+  const host=$('#fireworks');host.replaceChildren();$('#effectsLayer').classList.add('active');
+  const colors=['#ffe55f','#ff6f91','#70e0ff','#9cf06c','#c787ff','#ffffff'];
+  const positions=big?[[18,23],[51,18],[82,28],[32,58],[70,62]]:[[28,35],[50,22],[72,35]];
+  positions.forEach(([x,y],burstIndex)=>{
+    const burst=document.createElement('i');burst.className=`firework-burst${big?' big':''}`;
+    burst.style.setProperty('--x',`${x}%`);burst.style.setProperty('--y',`${y}%`);
+    const sparkCount=big?30:16;
+    for(let n=0;n<sparkCount;n++){
+      const spark=document.createElement('b'),angle=(Math.PI*2*n/sparkCount)+(burstIndex*.19)+(big?(Math.random()-.5)*.16:0),distance=big?110+Math.random()*150:55+(n%4)*13;
+      if(big&&n%3===0)spark.className='star';
+      spark.style.setProperty('--dx',`${Math.cos(angle)*distance}px`);
+      spark.style.setProperty('--dy',`${Math.sin(angle)*distance+(big?38:0)}px`);
+      spark.style.setProperty('--spark',colors[(n+burstIndex)%colors.length]);
+      spark.style.setProperty('--delay',`${burstIndex*.08+(n%3)*.012}s`);
+      if(big){const size=7+Math.random()*8;spark.style.width=`${size}px`;spark.style.height=`${size+(n%2)*5}px`;}
+      burst.appendChild(spark);
+    }
+    host.appendChild(burst);
+  });
+  setTimeout(()=>{$('#effectsLayer').classList.remove('active');host.replaceChildren();},big?1900:1250);
+}
+
+function selectChoice(index,source='touch'){
+  if(state.screen!=='game'||state.paused||state.locked)return;
+  ensureAudio();const opt=state.shownOptions[index],item=state.deck[state.index];
+  state.locked=true;clearHover();choices.forEach(c=>c.disabled=true);
+  const answerStarted=performance.now();let answerVoice;
+  if(opt.safe){
+    state.streak++;const isBonus=state.streak%3===0,gained=isBonus?200:100;
+    choices[index].classList.add('correct');playEffect('correct');launchFireworks(isBonus);
+    state.score+=gained;state.maxStreak=Math.max(state.maxStreak,state.streak);state.safeFirst++;
+    if(isBonus){playEffect('combo');feedback('โบนัสใหญ่! x2  +200','bonus',1450);}
+    else{if(state.streak%3===2)playEffect('bonus1');feedback('ปลอดภัย! +100 คะแนน','good');}
+    answerVoice=playVoiceSequence([feedbackVoices.correct[Math.floor(Math.random()*feedbackVoices.correct.length)]],{delay:100,gap:0});
+  }else{
+    choices[index].classList.add('wrong');stage.classList.add('wrong-impact');$('#dangerFlash').classList.add('show');playEffect('wrong');
+    state.retries++;state.streak=0;state.lives=Math.max(0,state.lives-1);$('.hearts-item').classList.remove('heart-hit');void $('.hearts-item').offsetWidth;$('.hearts-item').classList.add('heart-hit');
+    feedback('ไม่ปลอดภัย','try');answerVoice=playVoiceSequence([feedbackVoices.wrong[Math.floor(Math.random()*feedbackVoices.wrong.length)]],{delay:100,gap:0});
+  }
+  updateHud();
+  const bonusRound=opt.safe&&state.streak%3===0;
+  const minimumDelay=bonusRound?1350:850,answeredIndex=state.index;
+  Promise.resolve(answerVoice).then(()=>{
+    if(!state.running||state.index!==answeredIndex)return;
+    state.advanceTimer=setTimeout(()=>{state.index++;if(state.lives<=0||state.index>=state.deck.length)finishGame();else showScenario();},Math.max(0,minimumDelay-(performance.now()-answerStarted)));
+  });
+}
+
+async function startGame(){
+  ensureAudio();stopEffects();stopVoice();tone('tap');playMusic('game');
+  const previewIndex=Number(params.get('scenario'))-1;
+  state.deck=Number.isInteger(previewIndex)&&scenarios[previewIndex]?[scenarios[previewIndex],...shuffle(scenarios.filter((_,i)=>i!==previewIndex))]:shuffle(scenarios);
+  state.index=0;state.score=0;state.streak=0;state.maxStreak=0;state.safeFirst=0;state.retries=0;state.lives=3;state.timeLeft=state.duration;state.lastFivePlayed=false;state.running=true;state.paused=false;
+  setScreen('game');await startCamera();showScenario();
+  clearInterval(state.timerId);state.timerId=setInterval(()=>{if(state.running&&!state.paused&&state.mode==='timed'){state.timeLeft-=.25;if(state.timeLeft<=5&&state.timeLeft>0&&!state.lastFivePlayed){state.lastFivePlayed=true;playEffect('final5');}updateHud();if(state.timeLeft<=0)finishGame();}},250);
+}
+
+function finishGame(){
+  if(!state.running)return;state.running=false;state.locked=true;clearInterval(state.timerId);clearAnswerTimers();resetAnswerEffects();stopVoice();stopMusic();stopEffects();playEffect('finish');stopCamera();
+  $('#finalScore').textContent='0';$('#safeCount').textContent=state.safeFirst;$('#maxStreak').textContent=state.maxStreak;$('#retryCount').textContent=state.retries;
+  const ratio=state.safeFirst/Math.max(1,state.index||state.deck.length);$('#resultRank').textContent=ratio>=.83?'ผู้พิทักษ์ความปลอดภัย':ratio>=.58?'นักคิดก่อนเลือก':'ผู้พิทักษ์ฝึกหัด';
+  const badges=[];if(state.safeFirst>=8)badges.push('🛡️ คิดก่อนเลือก');if(state.maxStreak>=4)badges.push('⭐ มีสติยอดเยี่ยม');if(state.retries<=3)badges.push('🗣️ ขอความช่วยเหลือ');if(!badges.length)badges.push('🌱 พร้อมเรียนรู้');
+  $('#badgeList').innerHTML=badges.map(b=>`<span class="badge">${b}</span>`).join('');setScreen('result');
+  const start=performance.now(),duration=1100,target=state.score;
+  const tick=now=>{const p=Math.min(1,(now-start)/duration);$('#finalScore').textContent=Math.round(target*(1-Math.pow(1-p,3)));if(p<1)requestAnimationFrame(tick);};requestAnimationFrame(tick);
+}
+
+function pauseGame(auto=false){
+  if(!state.running||state.paused||state.locked)return;state.paused=true;stopVoice();stopMusic();stopEffects();setScreen('pause');
+  if(!auto)tone('tap');
+}
+
+function resumeGame(){if(!state.running)return;ensureAudio();state.paused=false;setScreen('game');playMusic('game');tone('tap');}
+
+function goMenu(){
+  state.running=false;state.paused=false;clearInterval(state.timerId);clearAnswerTimers();resetAnswerEffects();stopVoice();stopMusic();stopEffects();clearHover();stopCamera();setScreen('menu');
+}
+
+function setMode(mode){state.mode=mode;$$('[data-mode]').forEach(b=>b.classList.toggle('selected',b.dataset.mode===mode));$('#durationRow').style.opacity=mode==='timed'?'1':'.45';tone('tap');}
+function setDuration(value){state.duration=Number(value);$$('[data-duration]').forEach(b=>b.classList.toggle('selected',Number(b.dataset.duration)===state.duration));tone('tap');}
+
+async function toggleFullscreen(){
+  ensureAudio();tone('tap');
+  try{if(!document.fullscreenElement)await stage.requestFullscreen?.();else await document.exitFullscreen?.();screen.orientation?.lock?.('landscape').catch(()=>{});}catch{}
+}
+
+document.addEventListener('click',e=>{
+  const action=e.target.closest('[data-action]')?.dataset.action;
+  if(action==='start')startGame();
+  else if(action==='menu')goMenu();
+  else if(action==='settings'){tone('tap');setScreen('settings');}
+  else if(action==='guide'){tone('tap');setScreen('guide');}
+  else if(action==='camera'){tone('tap');setScreen('camera');startCamera();}
+  else if(action==='resume')resumeGame();
+});
+
+choices.forEach((c,i)=>c.addEventListener('pointerup',()=>selectChoice(i,'touch')));
+$$('[data-mode]').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
+$$('[data-duration]').forEach(b=>b.addEventListener('click',()=>setDuration(b.dataset.duration)));
+$('#voiceToggle').addEventListener('change',e=>{state.voice=e.target.checked;if(!state.voice)stopVoice();});
+$('#soundToggle').addEventListener('change',e=>{state.sound=e.target.checked;syncAudioForScreen();if(state.sound)tone('tap');$('#muteButton').textContent=state.sound?'🔊':'🔇';});
+$('#muteButton').addEventListener('click',()=>{state.sound=!state.sound;$('#soundToggle').checked=state.sound;$('#muteButton').textContent=state.sound?'🔊':'🔇';syncAudioForScreen();if(state.sound)tone('tap');});
+$('#fullscreenButton').addEventListener('click',toggleFullscreen);
+$('#pauseButton').addEventListener('click',()=>pauseGame(false));
+document.addEventListener('keydown',e=>{
+  if(state.screen==='game'&&!state.paused&&(e.key==='1'||e.key==='2'))selectChoice(Number(e.key)-1,'keyboard');
+  if((e.key===' '||e.key==='Enter')&&state.screen==='pause')resumeGame();
+  if(e.key==='Escape'&&state.screen==='game')pauseGame(false);
+});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&state.screen==='game')pauseGame(true);});
+window.addEventListener('pagehide',()=>{if(state.screen==='game')pauseGame(true);});
+window.addEventListener('beforeunload',stopCamera);
+document.addEventListener('pointerdown',()=>{if(state.screen==='menu')playMusic('menu');},{once:true});
+
+requestAnimationFrame(trackingLoop);
+$('#soundToggle').checked=state.sound;
+$('#voiceToggle').checked=state.voice;
+$('#muteButton').textContent=state.sound?'🔊':'🔇';
+preload();
