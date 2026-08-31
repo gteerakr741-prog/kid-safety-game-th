@@ -43,6 +43,16 @@ const params = new URLSearchParams(location.search);
 if(params.get('sound') === 'off') state.sound = false;
 if(params.get('voice') === 'off') state.voice = false;
 
+function syncViewportSize(){
+  const viewport=window.visualViewport;
+  document.documentElement.style.setProperty('--app-width',`${Math.round(viewport?.width||window.innerWidth)}px`);
+  document.documentElement.style.setProperty('--app-height',`${Math.round(viewport?.height||window.innerHeight)}px`);
+}
+syncViewportSize();
+window.addEventListener('resize',syncViewportSize,{passive:true});
+window.addEventListener('orientationchange',()=>setTimeout(syncViewportSize,120),{passive:true});
+window.visualViewport?.addEventListener('resize',syncViewportSize,{passive:true});
+
 const stage = $('#stage');
 const camera = $('#camera');
 const menuVideo = $('#menuVideo');
