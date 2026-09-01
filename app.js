@@ -72,6 +72,7 @@ const screens = $$('.screen');
 const choices = $$('.choice');
 const voicePlayer = new Audio();
 voicePlayer.preload='auto';voicePlayer.volume=AUDIO_LEVELS.voice;
+const voiceUnlockSrc='./assets/audio/silence.wav';
 const sounds = {
   menu:new Audio('./assets/audio/menu-music.mp3'),game:new Audio('./assets/audio/game-music.mp3'),
   ui:new Audio('./assets/audio/ui-click.mp3'),hold:new Audio('./assets/audio/choice-hold.mp3'),
@@ -105,7 +106,7 @@ async function preload(){
   const bar = $('#loadingBar');
   const text = $('#loadingText');
   const panelAssets=scenarios.flatMap(item=>Object.values(item.panels));
-  const assets = ['./assets/menu-bg.png','./assets/fonts/Mali-Regular.ttf','./assets/fonts/Mali-Bold.ttf',...panelAssets,...voiceAssets,...effectNames.map(name=>sounds[name].src)];
+  const assets = ['./assets/menu-bg.png','./assets/fonts/Mali-Regular.ttf','./assets/fonts/Mali-Bold.ttf',voiceUnlockSrc,...panelAssets,...voiceAssets,...effectNames.map(name=>sounds[name].src)];
   let done = 0;
   await Promise.all(assets.map(src => new Promise(resolve => {
     if(src.endsWith('.png')){const img=new Image();img.onload=img.onerror=resolve;img.src=src;}
@@ -202,10 +203,13 @@ function stopVoice(){
 
 function primeVoiceAudio(){
   if(!state.voice)return Promise.resolve(false);
-  voicePlayer.pause();voicePlayer.src=voiceAssets[0];voicePlayer.volume=0;voicePlayer.muted=false;
+  voicePlayer.pause();voicePlayer.src=voiceUnlockSrc;voicePlayer.volume=AUDIO_LEVELS.voice;voicePlayer.muted=false;
   const attempt=voicePlayer.play();
   if(!attempt)return Promise.resolve(false);
-  return attempt.then(()=>{voicePlayer.pause();voicePlayer.currentTime=0;voicePlayer.volume=AUDIO_LEVELS.voice;return true;}).catch(()=>{voicePlayer.volume=AUDIO_LEVELS.voice;return false;});
+  return attempt.then(()=>{
+    if(voicePlayer.src.includes('/silence.wav')){voicePlayer.pause();voicePlayer.currentTime=0;}
+    return true;
+  }).catch(()=>false);
 }
 
 function playVoiceClip(src,run){
