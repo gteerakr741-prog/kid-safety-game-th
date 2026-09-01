@@ -37,7 +37,7 @@ const state = {
   screen:'loading', mode:'learn', duration:60, timeLeft:60, missionCount:12, sound:true, voice:true,
   running:false, paused:false, index:0, score:0, streak:0, maxStreak:0, safeFirst:0, lives:3,
   retries:0, firstAttempt:true, deck:[], shownOptions:[], locked:false, lastFivePlayed:false,
-  stream:null, handLandmarker:null, handLoading:false, lastDetect:0, lastFrame:-1,
+  stream:null, handLandmarker:null, handLoading:false, handLoadPromise:null, handSeenAt:0, lastDetect:0, lastFrame:-1,
   hover:null, hoverStarted:0, dwellMs:650, choiceDwellMs:2000, timerId:null, answerTimer:null, advanceTimer:null,
   audio:null, audioBuffers:new Map(), effectLoads:new Map(), effectSources:new Map(), voiceAudio:null, voiceResolve:null, voiceRun:0, startRun:0, testHold:0
 };
@@ -299,10 +299,10 @@ async function startCamera(){
   if(state.stream?.active) return true;
   if(!navigator.mediaDevices?.getUserMedia){$('#cameraStatus').textContent='อุปกรณ์นี้ไม่รองรับกล้องผ่านหน้านี้';return false;}
   try{
-    state.stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:640,max:960},height:{ideal:360,max:540},frameRate:{ideal:24,max:30}}});
+    state.stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:960,max:1280},height:{ideal:540,max:720},frameRate:{ideal:24,max:30}}});
     camera.srcObject=state.stream;await camera.play();stage.classList.add('camera-on');
     $('#cameraStatus').textContent='เปิดกล้องแล้ว กำลังเตรียมระบบตรวจมือ';
-    loadHandModel();return true;
+    void loadHandModel();return true;
   }catch(err){
     $('#cameraStatus').textContent='เปิดกล้องไม่ได้ ยังเล่นด้วยการแตะหน้าจอได้';
     $('#trackingText').textContent='แตะคำตอบเพื่อเล่น';return false;
@@ -313,20 +313,25 @@ function stopCamera(){
   state.stream?.getTracks().forEach(t=>t.stop());state.stream=null;camera.srcObject=null;stage.classList.remove('camera-on');
 }
 
-async function loadHandModel(){
-  if(state.handLandmarker || state.handLoading) return;
+function loadHandModel(){
+  if(state.handLandmarker)return Promise.resolve(true);
+  if(state.handLoadPromise)return state.handLoadPromise;
   state.handLoading=true;
-  try{
+  document.documentElement.dataset.handTracking='loading';
+  state.handLoadPromise=(async()=>{try{
     const {FilesetResolver,HandLandmarker}=await import('./assets/vendor/mediapipe/vision_bundle.mjs');
     const vision=await FilesetResolver.forVisionTasks('./assets/vendor/mediapipe/wasm');
-    const common={baseOptions:{modelAssetPath:'./assets/vendor/mediapipe/models/hand_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numHands:2,minHandDetectionConfidence:.5,minHandPresenceConfidence:.45,minTrackingConfidence:.45};
+    const common={baseOptions:{modelAssetPath:'./assets/vendor/mediapipe/models/hand_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numHands:2,minHandDetectionConfidence:.35,minHandPresenceConfidence:.35,minTrackingConfidence:.35};
     try{state.handLandmarker=await HandLandmarker.createFromOptions(vision,common);}
     catch{state.handLandmarker=await HandLandmarker.createFromOptions(vision,{...common,baseOptions:{...common.baseOptions,delegate:'CPU'}});}
+    document.documentElement.dataset.handTracking='ready';
     $('#cameraStatus').textContent='พร้อมแล้ว ชี้ค้างบนคำตอบให้ครบ 2 วินาที';
     $('#trackingText').textContent='ชี้ค้าง 2 วินาที หรือแตะคำตอบ';
+    return true;
   }catch(err){
-    console.warn('Hand tracking unavailable',err);$('#cameraStatus').textContent='ตรวจมือไม่สำเร็จ ใช้การแตะหน้าจอแทนได้';
-  }finally{state.handLoading=false;}
+    console.warn('Hand tracking unavailable',err);document.documentElement.dataset.handTracking='fallback';$('#cameraStatus').textContent='ตรวจมือไม่สำเร็จ ใช้การแตะหน้าจอแทนได้';return false;
+  }finally{state.handLoading=false;state.handLoadPromise=null;}})();
+  return state.handLoadPromise;
 }
 
 function updatePointer(x,y,now){
@@ -371,9 +376,11 @@ async function trackingLoop(now){
       const result=state.handLandmarker.detectForVideo(camera,performance.now());
       const tip=nearestHand(result.landmarks)?.[8];
       if(tip){
+        state.handSeenAt=now;
         const r=stage.getBoundingClientRect();updatePointer((1-tip.x)*r.width,tip.y*r.height,now);
         $('#trackingDot').classList.add('ready');
-      }else{pointer.classList.remove('visible');clearHover();$('#trackingDot').classList.remove('ready');}
+        $('#trackingText').textContent='พบมือแล้ว · ชี้ค้าง 2 วินาที';
+      }else{pointer.classList.remove('visible');clearHover();$('#trackingDot').classList.remove('ready');if(now-state.handSeenAt>1200)$('#trackingText').textContent='ยกมือให้เห็นทั้งฝ่ามือ · หันฝ่ามือเข้ากล้อง';}
     }catch{}
   }
   requestAnimationFrame(trackingLoop);
@@ -490,7 +497,11 @@ async function startGame(){
   const fullDeck=Number.isInteger(previewIndex)&&scenarios[previewIndex]?[scenarios[previewIndex],...shuffle(scenarios.filter((_,i)=>i!==previewIndex))]:shuffle(scenarios);
   state.deck=fullDeck.slice(0,state.missionCount);
   state.index=0;state.score=0;state.streak=0;state.maxStreak=0;state.safeFirst=0;state.retries=0;state.lives=3;state.timeLeft=state.duration;state.lastFivePlayed=false;state.running=true;state.paused=false;
-  state.locked=true;setScreen('countdown');resyncViewport();await Promise.all([startCamera(),settleViewport(run)]);await Promise.race([Promise.all([audioReady,voiceReady]),new Promise(resolve=>setTimeout(resolve,500))]);
+  state.locked=true;setScreen('countdown');$('#countdownStatus').textContent='กำลังเตรียมกล้องและระบบตรวจมือ';resyncViewport();
+  const [cameraReady]=await Promise.all([startCamera(),settleViewport(run)]);
+  const handReady=cameraReady?await Promise.race([loadHandModel(),new Promise(resolve=>setTimeout(()=>resolve(false),12000))]):false;
+  $('#countdownStatus').textContent=handReady?'พร้อมแล้ว ยกมือให้เห็นทั้งฝ่ามือ':'ใช้การแตะหน้าจอเลือกคำตอบได้';
+  await Promise.race([Promise.all([audioReady,voiceReady]),new Promise(resolve=>setTimeout(resolve,500))]);
   if(!await runStartCountdown(run))return;
   syncViewportSize();setScreen('game');playMusic('game');showScenario();requestAnimationFrame(syncViewportSize);
   clearInterval(state.timerId);state.timerId=setInterval(()=>{if(state.running&&!state.paused&&state.mode==='timed'){state.timeLeft-=.25;if(state.timeLeft<=5&&state.timeLeft>0&&!state.lastFivePlayed){state.lastFivePlayed=true;playEffect('final5');}updateHud();if(state.timeLeft<=0)finishGame();}},250);
