@@ -48,19 +48,34 @@ if(params.get('voice') === 'off') state.voice = false;
 
 function syncViewportSize(){
   const viewport=window.visualViewport;
-  const widths=[viewport?.width,window.innerWidth,document.documentElement.clientWidth].filter(Number.isFinite);
-  const heights=[viewport?.height,window.innerHeight,document.documentElement.clientHeight].filter(Number.isFinite);
-  document.documentElement.style.setProperty('--app-width',`${Math.floor(Math.min(...widths))}px`);
-  document.documentElement.style.setProperty('--app-height',`${Math.floor(Math.min(...heights))}px`);
+  const width=Math.floor(viewport?.width||document.documentElement.clientWidth||window.innerWidth);
+  const height=Math.floor(viewport?.height||document.documentElement.clientHeight||window.innerHeight);
+  document.documentElement.style.setProperty('--app-width',`${width}px`);
+  document.documentElement.style.setProperty('--app-height',`${height}px`);
+  document.documentElement.dataset.viewport=`${width}x${height}`;
+  return `${width}x${height}`;
 }
 function resyncViewport(){
   syncViewportSize();
   requestAnimationFrame(syncViewportSize);
-  [100,300,700].forEach(delay=>setTimeout(syncViewportSize,delay));
+  [80,180,350,700,1100,1600].forEach(delay=>setTimeout(syncViewportSize,delay));
+}
+async function settleViewport(run,timeout=1800){
+  const started=performance.now();let previous='',stable=0;
+  while(run===state.startRun&&performance.now()-started<timeout){
+    const current=syncViewportSize();
+    if(current===previous)stable++;else{previous=current;stable=0;}
+    if(stable>=3&&window.innerWidth>window.innerHeight)return true;
+    await new Promise(resolve=>setTimeout(resolve,80));
+  }
+  syncViewportSize();return run===state.startRun;
 }
 syncViewportSize();
 window.addEventListener('resize',resyncViewport,{passive:true});
 window.addEventListener('orientationchange',resyncViewport,{passive:true});
+window.addEventListener('pageshow',resyncViewport,{passive:true});
+document.addEventListener('fullscreenchange',resyncViewport,{passive:true});
+screen.orientation?.addEventListener?.('change',resyncViewport);
 window.visualViewport?.addEventListener('resize',syncViewportSize,{passive:true});
 window.visualViewport?.addEventListener('scroll',syncViewportSize,{passive:true});
 
@@ -446,6 +461,7 @@ async function runStartCountdown(run){
   const number=$('#countdownValue');
   for(const value of [4,3,2,1]){
     if(run!==state.startRun)return false;
+    syncViewportSize();
     number.textContent=String(value);number.classList.remove('pop');void number.offsetWidth;number.classList.add('pop');
     await new Promise(resolve=>setTimeout(resolve,800));
   }
@@ -459,9 +475,9 @@ async function startGame(){
   const fullDeck=Number.isInteger(previewIndex)&&scenarios[previewIndex]?[scenarios[previewIndex],...shuffle(scenarios.filter((_,i)=>i!==previewIndex))]:shuffle(scenarios);
   state.deck=fullDeck.slice(0,state.missionCount);
   state.index=0;state.score=0;state.streak=0;state.maxStreak=0;state.safeFirst=0;state.retries=0;state.lives=3;state.timeLeft=state.duration;state.lastFivePlayed=false;state.running=true;state.paused=false;
-  state.locked=true;setScreen('countdown');await startCamera();await Promise.race([Promise.all([audioReady,voiceReady]),new Promise(resolve=>setTimeout(resolve,500))]);
+  state.locked=true;setScreen('countdown');resyncViewport();await Promise.all([startCamera(),settleViewport(run)]);await Promise.race([Promise.all([audioReady,voiceReady]),new Promise(resolve=>setTimeout(resolve,500))]);
   if(!await runStartCountdown(run))return;
-  setScreen('game');playMusic('game');showScenario();
+  syncViewportSize();setScreen('game');playMusic('game');showScenario();requestAnimationFrame(syncViewportSize);
   clearInterval(state.timerId);state.timerId=setInterval(()=>{if(state.running&&!state.paused&&state.mode==='timed'){state.timeLeft-=.25;if(state.timeLeft<=5&&state.timeLeft>0&&!state.lastFivePlayed){state.lastFivePlayed=true;playEffect('final5');}updateHud();if(state.timeLeft<=0)finishGame();}},250);
 }
 
