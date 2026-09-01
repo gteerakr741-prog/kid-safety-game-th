@@ -19,7 +19,7 @@ const scenarios = [
 scenarios.forEach((item,index)=>{
   const number=String(index+1).padStart(2,'0');
   const base=`./assets/scenarios/${number}`;
-  item.panels={question:`${base}/question-panel.png?v=4`,safe:`${base}/safe-panel.png?v=4`,risk:`${base}/risk-panel.png?v=4`};
+  item.panels={question:`${base}/question-panel.webp?v=5`,safe:`${base}/safe-panel.webp?v=5`,risk:`${base}/risk-panel.webp?v=5`};
   item.voice={question:`./assets/voice/q${number}.wav`,safe:`./assets/voice/safe${number}.wav`,risk:`./assets/voice/risk${number}.wav`};
 });
 
@@ -30,18 +30,21 @@ const feedbackVoices={
 };
 const isMobileDevice=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Macintosh/i.test(navigator.userAgent));
 const AUDIO_LEVELS={menuMusic:1,gameMusic:isMobileDevice?.2:.35,effect:.8,voice:1};
-const FEEDBACK_VOICE_DELAY_MS=100;
+const GAME_TIMING={feedbackVoice:100,answer:850,bonusAnswer:1350,countdownStep:800};
+const HAND_DETECT_INTERVAL_MS=isMobileDevice?66:50;
 
 const state = {
   screen:'loading', mode:'learn', duration:60, timeLeft:60, missionCount:12, sound:true, voice:true,
   running:false, paused:false, index:0, score:0, streak:0, maxStreak:0, safeFirst:0, lives:3,
   retries:0, firstAttempt:true, deck:[], shownOptions:[], locked:false, loadingScenario:false, lastFivePlayed:false,
-  stream:null, handLandmarker:null, handLoading:false, handLoadPromise:null, handSeenAt:0, pointerX:null, pointerY:null, lastDetect:0, lastFrame:-1,
+  stream:null, handLandmarker:null, handLoading:false, handLoadPromise:null, handSeenAt:0, pointerX:null, pointerY:null, lastDetect:0, lastFrame:-1, detectingHand:false, handDetectInterval:HAND_DETECT_INTERVAL_MS,
   hover:null, hoverStarted:0, dwellMs:650, choiceDwellMs:2000, timerId:null, answerTimer:null, advanceTimer:null,
-  audio:null, audioBuffers:new Map(), effectLoads:new Map(), effectSources:new Map(), musicBuffers:new Map(), musicLoads:new Map(), musicSource:null, musicGain:null, musicName:null, voiceBuffers:new Map(), voiceLoads:new Map(), voiceSource:null, voiceAudio:null, voiceResolve:null, voiceRun:0, startRun:0, testHold:0
+  audio:null, audioBuses:null, audioBuffers:new Map(), effectLoads:new Map(), effectSources:new Map(), musicBuffers:new Map(), musicLoads:new Map(), musicSource:null, musicGain:null, musicName:null, voiceBuffers:new Map(), voiceLoads:new Map(), voiceSource:null, voiceAudio:null, voiceResolve:null, voiceRun:0, startRun:0, testHold:0
 };
 const scenarioLoads=new Map();
 const scenarioImages=new Map();
+const voiceBounds=new WeakMap();
+let fireworkPool=[];
 
 const params = new URLSearchParams(location.search);
 if(params.get('sound') === 'off') state.sound = false;
@@ -152,6 +155,10 @@ async function preload(){
 function ensureAudio(){
   if(!state.audio){
     state.audio = new (window.AudioContext || window.webkitAudioContext)();
+    const master=state.audio.createGain(),music=state.audio.createGain(),effect=state.audio.createGain(),voice=state.audio.createGain();
+    master.gain.value=1;music.gain.value=1;effect.gain.value=1;voice.gain.value=1;
+    music.connect(master);effect.connect(master);voice.connect(master);master.connect(state.audio.destination);
+    state.audioBuses={master,music,effect,voice};
     state.audio.onstatechange=()=>{
       document.documentElement.dataset.audioState=state.audio.state;
       if(state.audio.state==='running')$('#muteButton').classList.remove('needs-audio');
@@ -213,7 +220,7 @@ function playEffect(name,restart=true){
   const buffer=state.audioBuffers.get(name);
   if(state.audio?.state==='running'&&buffer){
     const source=state.audio.createBufferSource(),gain=state.audio.createGain();
-    source.buffer=buffer;gain.gain.value=AUDIO_LEVELS.effect;source.connect(gain).connect(state.audio.destination);
+    source.buffer=buffer;gain.gain.value=AUDIO_LEVELS.effect;source.connect(gain).connect(state.audioBuses.effect);
     state.effectSources.set(name,source);source.onended=()=>{if(state.effectSources.get(name)===source)state.effectSources.delete(name);};source.start();
     document.documentElement.dataset.lastEffect=name;document.documentElement.dataset.lastEffectMode='webaudio';document.documentElement.dataset.lastEffectAt=String(Date.now());return;
   }
@@ -237,7 +244,7 @@ function startBufferedMusic(name){
   stopMusic();
   const source=context.createBufferSource(),gain=context.createGain();
   source.buffer=buffer;source.loop=true;gain.gain.value=name==='menu'?AUDIO_LEVELS.menuMusic:AUDIO_LEVELS.gameMusic;
-  source.connect(gain).connect(context.destination);state.musicSource=source;state.musicGain=gain;state.musicName=name;
+  source.connect(gain).connect(state.audioBuses.music);state.musicSource=source;state.musicGain=gain;state.musicName=name;
   document.documentElement.dataset.musicState=`${name}:webaudio`;
   source.onended=()=>{if(state.musicSource===source){state.musicSource=null;state.musicGain=null;state.musicName=null;}};
   source.start();return true;
@@ -274,7 +281,7 @@ function tone(kind='tap'){
   osc.type=kind==='wrong'?'sawtooth':'sine';osc.frequency.setValueAtTime(freq,now);
   if(kind==='good')osc.frequency.exponentialRampToValueAtTime(990,now+len);
   gain.gain.setValueAtTime(vol,now);gain.gain.exponentialRampToValueAtTime(.001,now+len);
-  osc.connect(gain).connect(ctx.destination);osc.start(now);osc.stop(now+len);
+  osc.connect(gain).connect(state.audioBuses.effect);osc.start(now);osc.stop(now+len);
 }
 
 function stopVoice(){
@@ -291,6 +298,24 @@ function loadVoiceBuffer(src){
   if(state.voiceLoads.has(src))return state.voiceLoads.get(src);
   const load=fetch(src).then(response=>response.arrayBuffer()).then(data=>ensureAudio().decodeAudioData(data)).then(buffer=>{state.voiceBuffers.set(src,buffer);return buffer;}).catch(()=>null).finally(()=>state.voiceLoads.delete(src));
   state.voiceLoads.set(src,load);return load;
+}
+
+function getVoiceBounds(buffer){
+  if(voiceBounds.has(buffer))return voiceBounds.get(buffer);
+  const threshold=.012,step=Math.max(1,Math.floor(buffer.sampleRate/400)),length=buffer.length;
+  let first=0,last=length-1,found=false;
+  for(let i=0;i<length;i+=step){
+    for(let channel=0;channel<buffer.numberOfChannels;channel++)if(Math.abs(buffer.getChannelData(channel)[i])>=threshold){first=i;found=true;break;}
+    if(found)break;
+  }
+  found=false;
+  for(let i=length-1;i>=0;i-=step){
+    for(let channel=0;channel<buffer.numberOfChannels;channel++)if(Math.abs(buffer.getChannelData(channel)[i])>=threshold){last=i;found=true;break;}
+    if(found)break;
+  }
+  const padding=Math.floor(buffer.sampleRate*.035);
+  const bounds={start:Math.max(0,first-padding)/buffer.sampleRate,duration:Math.max(.08,Math.min(length-1,last+padding)-Math.max(0,first-padding))/buffer.sampleRate};
+  voiceBounds.set(buffer,bounds);return bounds;
 }
 
 function prepareSharedVoiceAudio(){
@@ -353,9 +378,10 @@ async function playVoiceClip(src,run){
   if(buffer&&context.state==='running')return new Promise(resolve=>{
     const source=context.createBufferSource(),gain=context.createGain();let settled=false;
     const finish=played=>{if(settled)return;settled=true;if(state.voiceSource===source){state.voiceSource=null;state.voiceResolve=null;}resolve(played);};
-    source.buffer=buffer;gain.gain.value=AUDIO_LEVELS.voice;source.connect(gain).connect(context.destination);
+    const bounds=getVoiceBounds(buffer);
+    source.buffer=buffer;gain.gain.value=AUDIO_LEVELS.voice;source.connect(gain).connect(state.audioBuses.voice);
     state.voiceSource=source;state.voiceResolve=finish;source.onended=()=>finish(true);
-    document.documentElement.dataset.voiceState='webaudio';source.start();
+    document.documentElement.dataset.voiceState='webaudio';source.start(0,bounds.start,bounds.duration);
   });
   return new Promise(resolve=>{
     if(!state.voice||run!==state.voiceRun||state.screen!=='game'||state.paused){resolve(false);return;}
@@ -376,11 +402,12 @@ async function playVoiceSequence(paths,{delay=0,gap=45}={}){
   stopVoice();const run=state.voiceRun;
   if(!state.voice)return false;
   if(delay){await new Promise(resolve=>setTimeout(resolve,delay));if(run!==state.voiceRun)return false;}
-  for(const src of paths){
+  for(let index=0;index<paths.length;index++){
+    const src=paths[index];
     if(run!==state.voiceRun||!state.voice)return false;
     await playVoiceClip(src,run);
     if(run!==state.voiceRun)return false;
-    if(gap)await new Promise(resolve=>setTimeout(resolve,gap));
+    if(gap&&index<paths.length-1)await new Promise(resolve=>setTimeout(resolve,gap));
   }
   return run===state.voiceRun;
 }
@@ -401,7 +428,7 @@ async function startCamera(){
 }
 
 function stopCamera(){
-  state.stream?.getTracks().forEach(t=>t.stop());state.stream=null;camera.srcObject=null;stage.classList.remove('camera-on');
+  state.stream?.getTracks().forEach(t=>t.stop());state.stream=null;state.detectingHand=false;camera.srcObject=null;stage.classList.remove('camera-on');
 }
 
 function loadHandModel(){
@@ -461,8 +488,9 @@ function nearestHand(hands=[]){
 }
 
 async function trackingLoop(now){
-  if(state.handLandmarker&&state.stream?.active&&!state.paused&&now-state.lastDetect>=66&&camera.readyState>=2&&camera.currentTime!==state.lastFrame){
-    state.lastDetect=now;state.lastFrame=camera.currentTime;
+  if(state.handLandmarker&&state.stream?.active&&!state.paused&&!state.detectingHand&&now-state.lastDetect>=state.handDetectInterval&&camera.readyState>=2&&camera.currentTime!==state.lastFrame){
+    state.lastDetect=now;state.lastFrame=camera.currentTime;state.detectingHand=true;
+    const detectStarted=performance.now();
     try{
       const result=state.handLandmarker.detectForVideo(camera,performance.now());
       const tip=nearestHand(result.landmarks)?.[8];
@@ -475,7 +503,11 @@ async function trackingLoop(now){
         $('#trackingDot').classList.add('ready');
         $('#trackingText').textContent='พบมือแล้ว · ชี้ค้าง 2 วินาที';
       }else if(now-state.handSeenAt>350){pointer.classList.remove('visible');clearHover();state.pointerX=null;state.pointerY=null;$('#trackingDot').classList.remove('ready');if(now-state.handSeenAt>1200)$('#trackingText').textContent='ยกมือให้เห็นทั้งฝ่ามือ · หันฝ่ามือเข้ากล้อง';}
-    }catch{}
+    }catch{}finally{
+      const detectCost=performance.now()-detectStarted;
+      state.handDetectInterval=detectCost>52?Math.min(110,state.handDetectInterval+8):Math.max(HAND_DETECT_INTERVAL_MS,state.handDetectInterval-2);
+      document.documentElement.dataset.handDetectMs=String(Math.round(state.handDetectInterval));state.detectingHand=false;
+    }
   }
   requestAnimationFrame(trackingLoop);
 }
@@ -523,31 +555,44 @@ function clearAnswerTimers(){
 
 function resetAnswerEffects(){
   stage.classList.remove('wrong-impact');$('#dangerFlash').classList.remove('show');
-  $('#fireworks').replaceChildren();$('#effectsLayer').classList.remove('active');
+  fireworkPool.forEach(burst=>{burst.classList.remove('playing','big');burst.hidden=true;});$('#effectsLayer').classList.remove('active');
   choices.forEach(c=>{c.classList.remove('pending','correct','wrong');c.disabled=false;});
 }
 
+function ensureFireworkPool(){
+  if(fireworkPool.length)return fireworkPool;
+  const host=$('#fireworks'),colors=['#ffe55f','#ff6f91','#70e0ff','#9cf06c','#c787ff','#ffffff'];
+  fireworkPool=Array.from({length:5},(_,burstIndex)=>{
+    const burst=document.createElement('i');burst.className='firework-burst';burst.hidden=true;
+    for(let n=0;n<30;n++){
+      const spark=document.createElement('b');if(n%3===0)spark.className='star';spark.style.setProperty('--spark',colors[(n+burstIndex)%colors.length]);burst.appendChild(spark);
+    }
+    host.appendChild(burst);return burst;
+  });
+  return fireworkPool;
+}
+
 function launchFireworks(big=false){
-  const host=$('#fireworks');host.replaceChildren();$('#effectsLayer').classList.add('active');
+  const bursts=ensureFireworkPool();$('#effectsLayer').classList.add('active');
   const colors=['#ffe55f','#ff6f91','#70e0ff','#9cf06c','#c787ff','#ffffff'];
   const positions=big?[[18,23],[51,18],[82,28],[32,58],[70,62]]:[[28,35],[50,22],[72,35]];
   positions.forEach(([x,y],burstIndex)=>{
-    const burst=document.createElement('i');burst.className=`firework-burst${big?' big':''}`;
+    const burst=bursts[burstIndex];burst.hidden=false;burst.className=`firework-burst${big?' big':''}`;
     burst.style.setProperty('--x',`${x}%`);burst.style.setProperty('--y',`${y}%`);
     const sparkCount=big?30:16;
-    for(let n=0;n<sparkCount;n++){
-      const spark=document.createElement('b'),angle=(Math.PI*2*n/sparkCount)+(burstIndex*.19)+(big?(Math.random()-.5)*.16:0),distance=big?110+Math.random()*150:55+(n%4)*13;
-      if(big&&n%3===0)spark.className='star';
+    [...burst.children].forEach((spark,n)=>{
+      spark.hidden=n>=sparkCount;if(n>=sparkCount)return;
+      const angle=(Math.PI*2*n/sparkCount)+(burstIndex*.19)+(big?(Math.random()-.5)*.16:0),distance=big?110+Math.random()*150:55+(n%4)*13;
       spark.style.setProperty('--dx',`${Math.cos(angle)*distance}px`);
       spark.style.setProperty('--dy',`${Math.sin(angle)*distance+(big?38:0)}px`);
       spark.style.setProperty('--spark',colors[(n+burstIndex)%colors.length]);
       spark.style.setProperty('--delay',`${burstIndex*.08+(n%3)*.012}s`);
       if(big){const size=7+Math.random()*8;spark.style.width=`${size}px`;spark.style.height=`${size+(n%2)*5}px`;}
-      burst.appendChild(spark);
-    }
-    host.appendChild(burst);
+      else{spark.style.width='11px';spark.style.height='20px';}
+    });
+    void burst.offsetWidth;burst.classList.add('playing');
   });
-  setTimeout(()=>{$('#effectsLayer').classList.remove('active');host.replaceChildren();},big?1900:1250);
+  setTimeout(()=>{$('#effectsLayer').classList.remove('active');bursts.forEach(burst=>{burst.classList.remove('playing','big');burst.hidden=true;});},big?1900:1250);
 }
 
 function selectChoice(index,source='touch'){
@@ -561,15 +606,15 @@ function selectChoice(index,source='touch'){
     state.score+=gained;state.maxStreak=Math.max(state.maxStreak,state.streak);state.safeFirst++;
     if(isBonus){playEffect('combo');feedback('โบนัสใหญ่! x2  +200','bonus',1450);}
     else{if(state.streak%3===2)playEffect('bonus1');feedback('ปลอดภัย! +100 คะแนน','good');}
-    answerVoice=playVoiceSequence([feedbackVoices.correct[Math.floor(Math.random()*feedbackVoices.correct.length)]],{delay:FEEDBACK_VOICE_DELAY_MS,gap:0});
+    answerVoice=playVoiceSequence([feedbackVoices.correct[Math.floor(Math.random()*feedbackVoices.correct.length)]],{delay:GAME_TIMING.feedbackVoice,gap:0});
   }else{
     choices[index].classList.add('wrong');stage.classList.add('wrong-impact');$('#dangerFlash').classList.add('show');playEffect('wrong');
     state.retries++;state.streak=0;state.lives=Math.max(0,state.lives-1);$('.hearts-item').classList.remove('heart-hit');void $('.hearts-item').offsetWidth;$('.hearts-item').classList.add('heart-hit');
-    feedback('ไม่ปลอดภัย','try');answerVoice=playVoiceSequence([feedbackVoices.wrong[Math.floor(Math.random()*feedbackVoices.wrong.length)]],{delay:FEEDBACK_VOICE_DELAY_MS,gap:0});
+    feedback('ไม่ปลอดภัย','try');answerVoice=playVoiceSequence([feedbackVoices.wrong[Math.floor(Math.random()*feedbackVoices.wrong.length)]],{delay:GAME_TIMING.feedbackVoice,gap:0});
   }
   updateHud();
   const bonusRound=opt.safe&&state.streak%3===0;
-  const minimumDelay=bonusRound?1350:850,answeredIndex=state.index;
+  const minimumDelay=bonusRound?GAME_TIMING.bonusAnswer:GAME_TIMING.answer,answeredIndex=state.index;
   Promise.resolve(answerVoice).then(()=>{
     if(!state.running||state.index!==answeredIndex)return;
     state.advanceTimer=setTimeout(()=>{state.index++;if(state.lives<=0||state.index>=state.deck.length)finishGame();else void showScenario();},Math.max(0,minimumDelay-(performance.now()-answerStarted)));
@@ -582,19 +627,19 @@ async function runStartCountdown(run){
     if(run!==state.startRun)return false;
     syncViewportSize();
     number.textContent=String(value);number.classList.remove('pop');void number.offsetWidth;number.classList.add('pop');
-    await new Promise(resolve=>setTimeout(resolve,800));
+    await new Promise(resolve=>setTimeout(resolve,GAME_TIMING.countdownStep));
   }
   return run===state.startRun;
 }
 
 async function startGame(){
   const run=++state.startRun;
-  const audioReady=resetAudioOutput();stopVoice();const voiceReady=primeVoiceAudio();tone('tap');
+  const audioReady=Promise.all([resetAudioOutput(),prepareEffectAudio(),prepareMusicAudio()]);stopVoice();const voiceReady=Promise.all([primeVoiceAudio(),prepareSharedVoiceAudio()]);tone('tap');
   const previewIndex=Number(params.get('scenario'))-1;
   const fullDeck=Number.isInteger(previewIndex)&&scenarios[previewIndex]?[scenarios[previewIndex],...shuffle(scenarios.filter((_,i)=>i!==previewIndex))]:shuffle(scenarios);
   state.deck=fullDeck.slice(0,state.missionCount);
   resetScenarioWindow();const firstScenarioReady=prepareScenarioAssets(state.deck[0]);
-  state.index=0;state.score=0;state.streak=0;state.maxStreak=0;state.safeFirst=0;state.retries=0;state.lives=3;state.timeLeft=state.duration;state.lastFivePlayed=false;state.loadingScenario=false;state.handSeenAt=0;state.pointerX=null;state.pointerY=null;state.running=true;state.paused=false;
+  state.index=0;state.score=0;state.streak=0;state.maxStreak=0;state.safeFirst=0;state.retries=0;state.lives=3;state.timeLeft=state.duration;state.lastFivePlayed=false;state.loadingScenario=false;state.handSeenAt=0;state.pointerX=null;state.pointerY=null;state.handDetectInterval=HAND_DETECT_INTERVAL_MS;state.running=true;state.paused=false;
   state.locked=true;setScreen('countdown');$('#countdownStatus').textContent='กำลังเตรียมกล้องและระบบตรวจมือ';resyncViewport();
   const [cameraReady]=await Promise.all([startCamera(),settleViewport(run)]);
   const handReady=cameraReady?await Promise.race([loadHandModel(),new Promise(resolve=>setTimeout(()=>resolve(false),12000))]):false;

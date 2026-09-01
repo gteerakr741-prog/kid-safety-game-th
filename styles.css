@@ -127,15 +127,15 @@ button{border:0;cursor:pointer;color:inherit;-webkit-tap-highlight-color:transpa
 .scenario-board .hold-ring{right:7%;bottom:8%;width:44px;height:44px;z-index:7;box-shadow:0 0 12px #ffe45c}.scenario-board .hold-ring:after{background:#fff8dd}
 .scenario-board .feedback{top:50%;z-index:12;min-width:34%}
 .game-screen .input-hint{height:6%;flex:0 0 6%;align-items:center}
-.effects-layer{position:absolute;inset:0;z-index:50;overflow:hidden;pointer-events:none}.danger-flash{position:absolute;inset:-2px;background:rgba(220,0,12,.84);opacity:0}.danger-flash.show{animation:redFlash .82s ease-out both}.fireworks{position:absolute;inset:0}.firework-burst{position:absolute;left:var(--x);top:var(--y);width:1px;height:1px}.firework-burst b{position:absolute;width:11px;height:20px;border-radius:50%;background:var(--spark);box-shadow:0 0 8px var(--spark);opacity:0;animation:fireworkSpark .78s cubic-bezier(.1,.62,.24,1) var(--delay) both}.firework-burst.big b{animation-duration:1.2s;box-shadow:0 0 10px var(--spark),0 0 20px var(--spark)}.firework-burst b.star{border-radius:0;clip-path:polygon(50% 0,61% 35%,98% 36%,68% 57%,79% 94%,50% 72%,21% 94%,32% 57%,2% 36%,39% 35%)}
-.stage.wrong-impact{animation:screenImpact .48s linear}
+.effects-layer{position:absolute;inset:0;z-index:50;overflow:hidden;pointer-events:none}.danger-flash{position:absolute;inset:-2px;background:rgba(220,0,12,.84);opacity:0}.danger-flash.show{animation:redFlash .72s ease-out both}.fireworks{position:absolute;inset:0}.firework-burst{position:absolute;left:var(--x);top:var(--y);width:1px;height:1px}.firework-burst b{position:absolute;width:11px;height:20px;border-radius:50%;background:var(--spark);box-shadow:0 0 8px var(--spark);opacity:0}.firework-burst.playing b{animation:fireworkSpark .78s cubic-bezier(.1,.62,.24,1) var(--delay) both}.firework-burst.playing.big b{animation-duration:1.2s;box-shadow:0 0 10px var(--spark),0 0 20px var(--spark)}.firework-burst b.star{border-radius:0;clip-path:polygon(50% 0,61% 35%,98% 36%,68% 57%,79% 94%,50% 72%,21% 94%,32% 57%,2% 36%,39% 35%)}
+.stage.wrong-impact{animation:screenImpact .32s linear}
 @keyframes suspenseShake{0%{transform:translate(-2px,1px) scale(1.015) rotate(-.25deg)}25%{transform:translate(2px,-2px) scale(1.025) rotate(.3deg)}50%{transform:translate(-1px,2px) scale(1.02) rotate(-.2deg)}75%{transform:translate(2px,1px) scale(1.026) rotate(.25deg)}100%{transform:translate(-2px,-1px) scale(1.015) rotate(-.25deg)}}
 @keyframes holdCharge{0%,100%{transform:translate(-1px,.5px) rotate(-.1deg) scale(var(--hold-scale))}25%{transform:translate(.7px,-1px) rotate(.08deg) scale(var(--hold-scale))}50%{transform:translate(1px,.7px) rotate(-.06deg) scale(var(--hold-scale))}75%{transform:translate(-.7px,-.5px) rotate(.1deg) scale(var(--hold-scale))}}
 @keyframes holdChargeSoft{0%,100%{transform:translate3d(-.6px,0,0) scale(var(--hold-scale))}50%{transform:translate3d(.6px,0,0) scale(var(--hold-scale))}}
 @keyframes chargeSpin{to{transform:rotate(360deg) scale(1.08)}}
 @keyframes correctPop{0%{transform:scale(1)}45%{transform:scale(1.065)}72%{transform:scale(.985)}100%{transform:scale(1.025)}}
-@keyframes wrongChoice{0%,100%{transform:translateX(-5px) rotate(-.4deg)}50%{transform:translateX(5px) rotate(.4deg)}}
-@keyframes screenImpact{0%,100%{transform:translate(0)}15%{transform:translate(-10px,4px)}30%{transform:translate(9px,-5px)}45%{transform:translate(-7px,-3px)}60%{transform:translate(6px,3px)}75%{transform:translate(-3px,1px)}}
+@keyframes wrongChoice{0%,100%{transform:translateX(-2px) rotate(-.12deg)}50%{transform:translateX(2px) rotate(.12deg)}}
+@keyframes screenImpact{0%,100%{transform:translate(0)}20%{transform:translate(-4px,2px)}40%{transform:translate(4px,-2px)}60%{transform:translate(-3px,-1px)}80%{transform:translate(2px,1px)}}
 @keyframes redFlash{0%{opacity:0}12%{opacity:.96}36%{opacity:.58}58%{opacity:.9}100%{opacity:0}}
 @keyframes heartHit{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px) scale(1.04)}40%{transform:translateX(5px) scale(.98)}60%{transform:translateX(-3px)}80%{transform:translateX(2px)}}
 @keyframes fireworkSpark{0%{opacity:0;transform:translate(0,0) scale(.3)}12%{opacity:1}72%{opacity:1}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.75) rotate(140deg)}}
@@ -168,10 +168,5 @@ button{border:0;cursor:pointer;color:inherit;-webkit-tap-highlight-color:transpa
 @media (orientation:portrait){.rotate-prompt{display:flex}}
 @media (prefers-reduced-motion:reduce){
   *,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important}
-  .question-frame{animation-duration:6.4s!important}
-  .scenario-board .choice:first-child{animation-duration:5.7s!important}
-  .scenario-board .choice:last-child{animation-duration:6.9s!important}
-  .scenario-board .choice.hovered{animation-duration:.3s!important}
-  .firework-burst b{animation-duration:.78s!important}
-  .firework-burst.big b{animation-duration:1.2s!important}
+  .question-frame,.scenario-board .choice{animation:none!important}
 }
