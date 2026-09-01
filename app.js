@@ -37,7 +37,7 @@ const state = {
   screen:'loading', mode:'learn', duration:60, timeLeft:60, missionCount:12, sound:true, voice:true,
   running:false, paused:false, index:0, score:0, streak:0, maxStreak:0, safeFirst:0, lives:3,
   retries:0, firstAttempt:true, deck:[], shownOptions:[], locked:false, loadingScenario:false, lastFivePlayed:false,
-  stream:null, handLandmarker:null, handLoading:false, handLoadPromise:null, handSeenAt:0, pointerX:null, pointerY:null, lastDetect:0, lastFrame:-1, detectingHand:false, handDetectInterval:HAND_DETECT_INTERVAL_MS,
+  stream:null, cameraStartPromise:null, cameraRetryAt:0, cameraWatchTime:-1, cameraWatchAt:0, handLandmarker:null, handLoading:false, handLoadPromise:null, handSeenAt:0, pointerX:null, pointerY:null, lastDetect:0, lastFrame:-1, detectingHand:false, handDetectInterval:HAND_DETECT_INTERVAL_MS,
   hover:null, hoverStarted:0, dwellMs:650, choiceDwellMs:2000, timerId:null, answerTimer:null, advanceTimer:null,
   audio:null, audioBuses:null, audioBuffers:new Map(), effectLoads:new Map(), effectSources:new Map(), musicBuffers:new Map(), musicLoads:new Map(), musicSource:null, musicGain:null, musicName:null, voiceBuffers:new Map(), voiceLoads:new Map(), voiceSource:null, voiceAudio:null, voiceResolve:null, voiceRun:0, startRun:0, testHold:0
 };
@@ -413,23 +413,51 @@ async function playVoiceSequence(paths,{delay=0,gap=45}={}){
   return run===state.voiceRun;
 }
 
+function waitForCameraFrame(timeout=2600){
+  if(camera.readyState>=2&&camera.videoWidth>0)return Promise.resolve(true);
+  return new Promise(resolve=>{
+    let settled=false;
+    const finish=ready=>{if(settled)return;settled=true;clearTimeout(timer);camera.removeEventListener('loadeddata',check);camera.removeEventListener('canplay',check);resolve(ready);};
+    const check=()=>{if(camera.readyState>=2&&camera.videoWidth>0)finish(true);};
+    const timer=setTimeout(()=>finish(camera.readyState>=2&&camera.videoWidth>0),timeout);
+    camera.addEventListener('loadeddata',check);camera.addEventListener('canplay',check);
+  });
+}
+
+function setCameraUnavailable(message='แตะหน้าจอเพื่อเปิดกล้องอีกครั้ง'){
+  stage.classList.remove('camera-on');pointer.classList.remove('visible');clearHover();
+  document.documentElement.dataset.cameraState='waiting';$('#cameraStatus').textContent=message;$('#trackingText').textContent='แตะหน้าจอเพื่อเปิดกล้อง · หรือแตะคำตอบ';
+}
+
 async function startCamera(){
-  if(state.stream?.active) return true;
-  if(!navigator.mediaDevices?.getUserMedia){$('#cameraStatus').textContent='อุปกรณ์นี้ไม่รองรับกล้องผ่านหน้านี้';return false;}
-  try{
-    const size=isMobileDevice?{width:{ideal:640,max:960},height:{ideal:360,max:540}}:{width:{ideal:960,max:1280},height:{ideal:540,max:720}};
-    state.stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',...size,frameRate:{ideal:24,max:30}}});
-    camera.srcObject=state.stream;await camera.play();stage.classList.add('camera-on');
-    $('#cameraStatus').textContent='เปิดกล้องแล้ว กำลังเตรียมระบบตรวจมือ';
-    void loadHandModel();return true;
-  }catch(err){
-    $('#cameraStatus').textContent='เปิดกล้องไม่ได้ ยังเล่นด้วยการแตะหน้าจอได้';
-    $('#trackingText').textContent='แตะคำตอบเพื่อเล่น';return false;
-  }
+  if(state.cameraStartPromise)return state.cameraStartPromise;
+  state.cameraStartPromise=(async()=>{
+    if(!navigator.mediaDevices?.getUserMedia){setCameraUnavailable('เบราว์เซอร์นี้ไม่รองรับกล้อง ใช้การแตะคำตอบได้');return false;}
+    try{
+      if(!state.stream?.active){
+        state.stream?.getTracks().forEach(track=>track.stop());
+        const size=isMobileDevice?{width:{ideal:640,max:960},height:{ideal:360,max:540}}:{width:{ideal:960,max:1280},height:{ideal:540,max:720}};
+        state.stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'user'},...size,frameRate:{ideal:24,max:30}}});
+      }
+      camera.muted=true;camera.playsInline=true;if(camera.srcObject!==state.stream)camera.srcObject=state.stream;
+      await camera.play();
+      if(!await waitForCameraFrame())throw new Error('Camera stream has no video frames');
+      state.cameraWatchTime=camera.currentTime;state.cameraWatchAt=performance.now();state.lastFrame=-1;stage.classList.add('camera-on');
+      document.documentElement.dataset.cameraState='ready';
+      $('#cameraStatus').textContent=state.handLandmarker?'พร้อมแล้ว ชี้ค้างบนคำตอบให้ครบ 2 วินาที':'เปิดกล้องแล้ว กำลังเตรียมระบบตรวจมือ';
+      $('#trackingText').textContent=state.handLandmarker?'ยกมือให้เห็นทั้งฝ่ามือ':'กำลังเตรียมระบบตรวจมือ';
+      state.stream.getVideoTracks().forEach(track=>track.onended=()=>{state.stream=null;setCameraUnavailable('กล้องหยุดทำงาน แตะหน้าจอเพื่อเปิดใหม่');});
+      void loadHandModel();return true;
+    }catch(err){
+      console.warn('Camera unavailable',err);state.stream?.getTracks().forEach(track=>track.stop());state.stream=null;camera.srcObject=null;
+      setCameraUnavailable('เปิดกล้องไม่ได้ ตรวจสิทธิ์กล้องแล้วแตะหน้าจอเพื่อลองใหม่');return false;
+    }
+  })().finally(()=>{state.cameraStartPromise=null;});
+  return state.cameraStartPromise;
 }
 
 function stopCamera(){
-  state.stream?.getTracks().forEach(t=>t.stop());state.stream=null;state.detectingHand=false;camera.srcObject=null;stage.classList.remove('camera-on');
+  state.stream?.getTracks().forEach(t=>{t.onended=null;t.stop();});state.stream=null;state.cameraStartPromise=null;state.detectingHand=false;camera.srcObject=null;delete document.documentElement.dataset.cameraState;stage.classList.remove('camera-on');
 }
 
 function loadHandModel(){
@@ -444,8 +472,8 @@ function loadHandModel(){
     try{state.handLandmarker=await HandLandmarker.createFromOptions(vision,common);}
     catch{state.handLandmarker=await HandLandmarker.createFromOptions(vision,{...common,baseOptions:{...common.baseOptions,delegate:'CPU'}});}
     document.documentElement.dataset.handTracking='ready';
-    $('#cameraStatus').textContent='พร้อมแล้ว ชี้ค้างบนคำตอบให้ครบ 2 วินาที';
-    $('#trackingText').textContent='ชี้ค้าง 2 วินาที หรือแตะคำตอบ';
+    if(state.stream?.active&&camera.readyState>=2){$('#cameraStatus').textContent='พร้อมแล้ว ชี้ค้างบนคำตอบให้ครบ 2 วินาที';$('#trackingText').textContent='ชี้ค้าง 2 วินาที หรือแตะคำตอบ';}
+    else setCameraUnavailable('ระบบตรวจมือพร้อม · แตะหน้าจอเพื่อเปิดกล้อง');
     return true;
   }catch(err){
     console.warn('Hand tracking unavailable',err);document.documentElement.dataset.handTracking='fallback';$('#cameraStatus').textContent='ตรวจมือไม่สำเร็จ ใช้การแตะหน้าจอแทนได้';return false;
@@ -489,6 +517,10 @@ function nearestHand(hands=[]){
 }
 
 async function trackingLoop(now){
+  if(state.stream?.active&&['camera','countdown','game'].includes(state.screen)){
+    if(camera.currentTime!==state.cameraWatchTime){state.cameraWatchTime=camera.currentTime;state.cameraWatchAt=now;}
+    else if(now-state.cameraWatchAt>1500&&now>=state.cameraRetryAt){state.cameraRetryAt=now+3500;camera.play().catch(()=>{});}
+  }
   if(state.handLandmarker&&state.stream?.active&&!state.paused&&!state.detectingHand&&now-state.lastDetect>=state.handDetectInterval&&camera.readyState>=2&&camera.currentTime!==state.lastFrame){
     state.lastDetect=now;state.lastFrame=camera.currentTime;state.detectingHand=true;
     const detectStarted=performance.now();
@@ -709,7 +741,11 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden&&state.scre
 window.addEventListener('pagehide',()=>{if(state.screen==='game')pauseGame(true);});
 window.addEventListener('beforeunload',stopCamera);
 function recoverAudio(){if(!state.sound)return;void wakeAudio().then(()=>syncAudioForScreen());}
-document.addEventListener('pointerdown',recoverAudio,{passive:true});
+function recoverCamera(){
+  if(!['camera','countdown','game'].includes(state.screen)||state.stream?.active||performance.now()<state.cameraRetryAt)return;
+  state.cameraRetryAt=performance.now()+3500;void startCamera();
+}
+document.addEventListener('pointerdown',()=>{recoverAudio();recoverCamera();},{passive:true});
 window.addEventListener('focus',recoverAudio,{passive:true});
 window.addEventListener('pageshow',recoverAudio,{passive:true});
 setInterval(()=>{
