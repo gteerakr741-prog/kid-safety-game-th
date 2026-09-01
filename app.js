@@ -28,7 +28,6 @@ const feedbackVoices={
   correct:['./assets/voice/correct-1.wav','./assets/voice/correct-2.wav','./assets/voice/correct-3.wav','./assets/voice/correct-4.wav'],
   wrong:['./assets/voice/wrong-1.wav','./assets/voice/wrong-2.wav']
 };
-const voiceAssets=[...scenarios.flatMap(item=>Object.values(item.voice)),...optionVoices,...feedbackVoices.correct,...feedbackVoices.wrong];
 const isMobileDevice=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Macintosh/i.test(navigator.userAgent));
 const AUDIO_LEVELS={menuMusic:1,gameMusic:isMobileDevice?.2:.35,effect:.8,voice:1};
 const FEEDBACK_VOICE_DELAY_MS=100;
@@ -36,11 +35,13 @@ const FEEDBACK_VOICE_DELAY_MS=100;
 const state = {
   screen:'loading', mode:'learn', duration:60, timeLeft:60, missionCount:12, sound:true, voice:true,
   running:false, paused:false, index:0, score:0, streak:0, maxStreak:0, safeFirst:0, lives:3,
-  retries:0, firstAttempt:true, deck:[], shownOptions:[], locked:false, lastFivePlayed:false,
+  retries:0, firstAttempt:true, deck:[], shownOptions:[], locked:false, loadingScenario:false, lastFivePlayed:false,
   stream:null, handLandmarker:null, handLoading:false, handLoadPromise:null, handSeenAt:0, pointerX:null, pointerY:null, lastDetect:0, lastFrame:-1,
   hover:null, hoverStarted:0, dwellMs:650, choiceDwellMs:2000, timerId:null, answerTimer:null, advanceTimer:null,
   audio:null, audioBuffers:new Map(), effectLoads:new Map(), effectSources:new Map(), musicBuffers:new Map(), musicLoads:new Map(), musicSource:null, musicGain:null, musicName:null, voiceBuffers:new Map(), voiceLoads:new Map(), voiceSource:null, voiceAudio:null, voiceResolve:null, voiceRun:0, startRun:0, testHold:0
 };
+const scenarioLoads=new Map();
+const scenarioImages=new Map();
 
 const params = new URLSearchParams(location.search);
 if(params.get('sound') === 'off') state.sound = false;
@@ -135,8 +136,8 @@ function setScreen(name){
 async function preload(){
   const bar = $('#loadingBar');
   const text = $('#loadingText');
-  const panelAssets=scenarios.flatMap(item=>Object.values(item.panels));
-  const assets = ['./assets/menu-bg.png','./assets/fonts/Mali-Regular.ttf','./assets/fonts/Mali-Bold.ttf',voiceUnlockSrc,...panelAssets,...voiceAssets,...effectNames.map(name=>sounds[name].src)];
+  const assets = ['./assets/menu-bg.png','./assets/fonts/Mali-Regular.ttf','./assets/fonts/Mali-Bold.ttf',voiceUnlockSrc,'./assets/buttons/start.png','./assets/buttons/camera.png','./assets/buttons/settings.png','./assets/buttons/guide.png',...effectNames.map(name=>sounds[name].src)];
+  document.documentElement.dataset.preloadAssetCount=String(assets.length);
   let done = 0;
   await Promise.all(assets.map(src => new Promise(resolve => {
     if(src.endsWith('.png')){const img=new Image();img.onload=img.onerror=resolve;img.src=src;}
@@ -145,7 +146,7 @@ async function preload(){
   await Promise.all([prepareEffectAudio(),prepareMusicAudio()]);
   await new Promise(r=>setTimeout(r,350));
   setScreen('menu');
-  setTimeout(()=>void loadHandModel(),0);
+  setTimeout(()=>{void loadHandModel();void prepareSharedVoiceAudio();},0);
 }
 
 function ensureAudio(){
@@ -290,6 +291,48 @@ function loadVoiceBuffer(src){
   if(state.voiceLoads.has(src))return state.voiceLoads.get(src);
   const load=fetch(src).then(response=>response.arrayBuffer()).then(data=>ensureAudio().decodeAudioData(data)).then(buffer=>{state.voiceBuffers.set(src,buffer);return buffer;}).catch(()=>null).finally(()=>state.voiceLoads.delete(src));
   state.voiceLoads.set(src,load);return load;
+}
+
+function prepareSharedVoiceAudio(){
+  return Promise.all([...optionVoices,...feedbackVoices.correct,...feedbackVoices.wrong].map(loadVoiceBuffer));
+}
+
+function loadScenarioImage(src){
+  if(scenarioImages.has(src))return Promise.resolve(scenarioImages.get(src));
+  return new Promise(resolve=>{
+    const image=new Image();scenarioImages.set(src,image);
+    const done=()=>{image.onload=null;image.onerror=null;const decoded=image.decode?.();if(decoded?.then)decoded.catch(()=>{}).finally(()=>resolve(image));else resolve(image);};
+    image.onload=done;image.onerror=done;image.src=src;
+  });
+}
+
+function prepareScenarioAssets(item){
+  if(!item)return Promise.resolve(false);
+  const key=item.panels.question;
+  if(scenarioLoads.has(key))return scenarioLoads.get(key);
+  const task=Promise.all([...Object.values(item.panels).map(loadScenarioImage),...Object.values(item.voice).map(loadVoiceBuffer)]).then(()=>{
+    document.documentElement.dataset.preparedScenario=key;return true;
+  }).catch(()=>false);
+  scenarioLoads.set(key,task);return task;
+}
+
+function trimScenarioWindow(){
+  const keepItems=state.deck.slice(state.index,state.index+2),keepPanels=new Set(keepItems.flatMap(item=>Object.values(item.panels))),keepVoices=new Set(keepItems.flatMap(item=>Object.values(item.voice))),keepKeys=new Set(keepItems.map(item=>item.panels.question));
+  for(const key of scenarioImages.keys())if(!keepPanels.has(key))scenarioImages.delete(key);
+  for(const key of scenarioLoads.keys())if(!keepKeys.has(key))scenarioLoads.delete(key);
+  for(const key of state.voiceBuffers.keys())if(/^\.\/assets\/voice\/(?:q|safe|risk)\d+\.wav$/.test(key)&&!keepVoices.has(key))state.voiceBuffers.delete(key);
+  document.documentElement.dataset.scenarioWindow=String(keepItems.length);
+}
+
+function resetScenarioWindow(){
+  scenarioLoads.clear();scenarioImages.clear();
+  for(const key of state.voiceBuffers.keys())if(/^\.\/assets\/voice\/(?:q|safe|risk)\d+\.wav$/.test(key))state.voiceBuffers.delete(key);
+}
+
+function scheduleScenario(index){
+  const item=state.deck[index];if(!item)return;
+  const warm=()=>void prepareScenarioAssets(item);
+  if('requestIdleCallback'in window)requestIdleCallback(warm,{timeout:900});else setTimeout(warm,80);
 }
 
 function primeVoiceAudio(){
@@ -437,12 +480,14 @@ async function trackingLoop(now){
   requestAnimationFrame(trackingLoop);
 }
 
-function showScenario(){
+async function showScenario(){
   clearAnswerTimers();resetAnswerEffects();stopVoice();
   const feedbackEl=$('#feedback');clearTimeout(feedbackEl._timer);feedbackEl.className='feedback';feedbackEl.textContent='';
   ['hold','correct','question','bonus1','bonus2','combo'].forEach(stopEffect);
-  state.locked=false;state.firstAttempt=true;clearHover();
-  const item=state.deck[state.index];
+  state.locked=true;state.loadingScenario=true;state.firstAttempt=true;clearHover();
+  const scenarioIndex=state.index,item=state.deck[scenarioIndex];
+  await prepareScenarioAssets(item);
+  state.loadingScenario=false;if(!state.running||state.index!==scenarioIndex)return;
   const board=$('#scenarioBoardImage');
   board.src=item.panels.question;board.alt=item.q;
   $('#progressValue').textContent=`${state.index+1}/${state.deck.length}`;
@@ -454,9 +499,10 @@ function showScenario(){
     c.querySelector('.choice-text').textContent=opts[i].text;
     const image=c.querySelector('.choice-slice');image.src=opts[i].safe?item.panels.safe:item.panels.risk;image.alt=opts[i].text;
   });
+  state.locked=false;
   if(state.index>0)playEffect('question');
   playVoiceSequence([item.voice.question,optionVoices[0],opts[0].safe?item.voice.safe:item.voice.risk,optionVoices[1],opts[1].safe?item.voice.safe:item.voice.risk]);
-  updateHud();
+  updateHud();scheduleScenario(state.index+1);trimScenarioWindow();
 }
 
 function updateHud(){
@@ -526,7 +572,7 @@ function selectChoice(index,source='touch'){
   const minimumDelay=bonusRound?1350:850,answeredIndex=state.index;
   Promise.resolve(answerVoice).then(()=>{
     if(!state.running||state.index!==answeredIndex)return;
-    state.advanceTimer=setTimeout(()=>{state.index++;if(state.lives<=0||state.index>=state.deck.length)finishGame();else showScenario();},Math.max(0,minimumDelay-(performance.now()-answerStarted)));
+    state.advanceTimer=setTimeout(()=>{state.index++;if(state.lives<=0||state.index>=state.deck.length)finishGame();else void showScenario();},Math.max(0,minimumDelay-(performance.now()-answerStarted)));
   });
 }
 
@@ -547,19 +593,20 @@ async function startGame(){
   const previewIndex=Number(params.get('scenario'))-1;
   const fullDeck=Number.isInteger(previewIndex)&&scenarios[previewIndex]?[scenarios[previewIndex],...shuffle(scenarios.filter((_,i)=>i!==previewIndex))]:shuffle(scenarios);
   state.deck=fullDeck.slice(0,state.missionCount);
-  state.index=0;state.score=0;state.streak=0;state.maxStreak=0;state.safeFirst=0;state.retries=0;state.lives=3;state.timeLeft=state.duration;state.lastFivePlayed=false;state.handSeenAt=0;state.pointerX=null;state.pointerY=null;state.running=true;state.paused=false;
+  resetScenarioWindow();const firstScenarioReady=prepareScenarioAssets(state.deck[0]);
+  state.index=0;state.score=0;state.streak=0;state.maxStreak=0;state.safeFirst=0;state.retries=0;state.lives=3;state.timeLeft=state.duration;state.lastFivePlayed=false;state.loadingScenario=false;state.handSeenAt=0;state.pointerX=null;state.pointerY=null;state.running=true;state.paused=false;
   state.locked=true;setScreen('countdown');$('#countdownStatus').textContent='กำลังเตรียมกล้องและระบบตรวจมือ';resyncViewport();
   const [cameraReady]=await Promise.all([startCamera(),settleViewport(run)]);
   const handReady=cameraReady?await Promise.race([loadHandModel(),new Promise(resolve=>setTimeout(()=>resolve(false),12000))]):false;
   $('#countdownStatus').textContent=handReady?'พร้อมแล้ว ยกมือให้เห็นทั้งฝ่ามือ':'ใช้การแตะหน้าจอเลือกคำตอบได้';
   await Promise.race([Promise.all([audioReady,voiceReady]),new Promise(resolve=>setTimeout(resolve,500))]);
-  if(!await runStartCountdown(run))return;
-  syncViewportSize();setScreen('game');await wakeAudio();playMusic('game');await Promise.race([primeVoiceAudio(),new Promise(resolve=>setTimeout(()=>resolve(false),250))]);showScenario();requestAnimationFrame(syncViewportSize);
-  clearInterval(state.timerId);state.timerId=setInterval(()=>{if(state.running&&!state.paused&&state.mode==='timed'){state.timeLeft-=.25;if(state.timeLeft<=5&&state.timeLeft>0&&!state.lastFivePlayed){state.lastFivePlayed=true;playEffect('final5');}updateHud();if(state.timeLeft<=0)finishGame();}},250);
+  const countdownReady=runStartCountdown(run);await firstScenarioReady;if(!await countdownReady)return;
+  syncViewportSize();setScreen('game');await wakeAudio();playMusic('game');await Promise.race([primeVoiceAudio(),new Promise(resolve=>setTimeout(()=>resolve(false),250))]);await showScenario();requestAnimationFrame(syncViewportSize);
+  clearInterval(state.timerId);state.timerId=setInterval(()=>{if(state.running&&!state.paused&&!state.loadingScenario&&state.mode==='timed'){state.timeLeft-=.25;if(state.timeLeft<=5&&state.timeLeft>0&&!state.lastFivePlayed){state.lastFivePlayed=true;playEffect('final5');}updateHud();if(state.timeLeft<=0)finishGame();}},250);
 }
 
 function finishGame(){
-  if(!state.running)return;state.running=false;state.locked=true;clearInterval(state.timerId);clearAnswerTimers();resetAnswerEffects();stopVoice();stopMusic();stopEffects();playEffect('finish');stopCamera();
+  if(!state.running)return;state.running=false;state.locked=true;clearInterval(state.timerId);clearAnswerTimers();resetAnswerEffects();stopVoice();stopMusic();stopEffects();playEffect('finish');stopCamera();resetScenarioWindow();
   $('#finalScore').textContent='0';$('#safeCount').textContent=state.safeFirst;$('#maxStreak').textContent=state.maxStreak;$('#retryCount').textContent=state.retries;
   const ratio=state.safeFirst/Math.max(1,state.index||state.deck.length);$('#resultRank').textContent=ratio>=.83?'ผู้พิทักษ์ความปลอดภัย':ratio>=.58?'นักคิดก่อนเลือก':'ผู้พิทักษ์ฝึกหัด';
   const badges=[];if(state.safeFirst>=Math.ceil(state.deck.length*.67))badges.push('🛡️ คิดก่อนเลือก');if(state.maxStreak>=Math.min(4,state.deck.length))badges.push('⭐ มีสติยอดเยี่ยม');if(state.retries<=Math.ceil(state.deck.length*.25))badges.push('🗣️ ขอความช่วยเหลือ');if(!badges.length)badges.push('🌱 พร้อมเรียนรู้');
@@ -576,7 +623,7 @@ function pauseGame(auto=false){
 function resumeGame(){if(!state.running)return;void resetAudioOutput();state.paused=false;setScreen('game');playMusic('game');tone('tap');}
 
 function goMenu(){
-  state.startRun++;state.running=false;state.paused=false;clearInterval(state.timerId);clearAnswerTimers();resetAnswerEffects();stopVoice();stopMusic();stopEffects();clearHover();stopCamera();setScreen('menu');
+  state.startRun++;state.running=false;state.paused=false;clearInterval(state.timerId);clearAnswerTimers();resetAnswerEffects();stopVoice();stopMusic();stopEffects();clearHover();stopCamera();resetScenarioWindow();setScreen('menu');
 }
 
 function setMode(mode){state.mode=mode;$$('[data-mode]').forEach(b=>b.classList.toggle('selected',b.dataset.mode===mode));$('#durationRow').style.opacity=mode==='timed'?'1':'.45';tone('tap');}
