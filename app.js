@@ -139,17 +139,18 @@ function setScreen(name){
 async function preload(){
   const bar = $('#loadingBar');
   const text = $('#loadingText');
-  const assets = ['./assets/menu-bg.png','./assets/fonts/Mali-Regular.ttf','./assets/fonts/Mali-Bold.ttf',voiceUnlockSrc,'./assets/buttons/start.png','./assets/buttons/camera.png','./assets/buttons/settings.png','./assets/buttons/guide.png',...effectNames.map(name=>sounds[name].src)];
+  const assets = ['./assets/menu-bg.png','./assets/fonts/Mali-Regular.ttf','./assets/fonts/Mali-Bold.ttf',voiceUnlockSrc,'./assets/buttons/start.png','./assets/buttons/camera.png','./assets/buttons/settings.png','./assets/buttons/guide.png',sounds.ui.src,sounds.menu.src];
   document.documentElement.dataset.preloadAssetCount=String(assets.length);
   let done = 0;
   await Promise.all(assets.map(src => new Promise(resolve => {
     if(src.endsWith('.png')){const img=new Image();img.onload=img.onerror=resolve;img.src=src;}
     else fetch(src).then(resolve).catch(resolve);
   }).then(()=>{done++;bar.style.width=`${Math.round(done/assets.length*100)}%`;text.textContent=`เตรียมพร้อมแล้ว ${done}/${assets.length}`;})));
-  await Promise.all([prepareEffectAudio(),prepareMusicAudio()]);
-  await new Promise(r=>setTimeout(r,350));
+  await Promise.all([prepareEffectAudio(['ui']),prepareMusicAudio(['menu'])]);
+  await new Promise(r=>setTimeout(r,120));
   setScreen('menu');
-  setTimeout(()=>{void loadHandModel();void prepareSharedVoiceAudio();},0);
+  const warmGameplay=()=>{void prepareEffectAudio();void prepareMusicAudio(['game']);void loadHandModel();void prepareSharedVoiceAudio();};
+  if('requestIdleCallback'in window)requestIdleCallback(warmGameplay,{timeout:1400});else setTimeout(warmGameplay,350);
 }
 
 function ensureAudio(){
@@ -184,9 +185,9 @@ function resetAudioOutput(){
   return wakeAudio();
 }
 
-function prepareEffectAudio(){
+function prepareEffectAudio(names=effectNames){
   ensureAudio();
-  return Promise.all(effectNames.map(name=>{
+  return Promise.all(names.map(name=>{
     if(state.audioBuffers.has(name))return Promise.resolve(state.audioBuffers.get(name));
     if(state.effectLoads.has(name))return state.effectLoads.get(name);
     const load=fetch(sounds[name].src).then(response=>response.arrayBuffer()).then(data=>state.audio.decodeAudioData(data)).then(buffer=>{state.audioBuffers.set(name,buffer);return buffer;}).catch(()=>null).finally(()=>state.effectLoads.delete(name));
@@ -194,8 +195,8 @@ function prepareEffectAudio(){
   }));
 }
 
-function prepareMusicAudio(){
-  return Promise.all(['menu','game'].map(name=>{
+function prepareMusicAudio(names=['menu','game']){
+  return Promise.all(names.map(name=>{
     if(state.musicBuffers.has(name))return Promise.resolve(state.musicBuffers.get(name));
     if(state.musicLoads.has(name))return state.musicLoads.get(name);
     const load=fetch(sounds[name].src).then(response=>response.arrayBuffer()).then(data=>ensureAudio().decodeAudioData(data)).then(buffer=>{state.musicBuffers.set(name,buffer);return buffer;}).catch(()=>null).finally(()=>state.musicLoads.delete(name));
