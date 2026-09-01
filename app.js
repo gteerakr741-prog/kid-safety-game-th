@@ -267,7 +267,7 @@ function playVoiceClip(src,run){
   });
 }
 
-async function playVoiceSequence(paths,{delay=0,gap=90}={}){
+async function playVoiceSequence(paths,{delay=0,gap=45}={}){
   stopVoice();const run=state.voiceRun;
   if(!state.voice)return false;
   if(delay){await new Promise(resolve=>setTimeout(resolve,delay));if(run!==state.voiceRun)return false;}
