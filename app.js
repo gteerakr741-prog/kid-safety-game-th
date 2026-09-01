@@ -30,7 +30,7 @@ const feedbackVoices={
 };
 const voiceAssets=[...scenarios.flatMap(item=>Object.values(item.voice)),...optionVoices,...feedbackVoices.correct,...feedbackVoices.wrong];
 const isMobileDevice=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Macintosh/i.test(navigator.userAgent));
-const AUDIO_LEVELS={menuMusic:1,gameMusic:isMobileDevice?.25:.4,effect:.8,voice:1};
+const AUDIO_LEVELS={menuMusic:1,gameMusic:isMobileDevice?.2:.35,effect:.8,voice:1};
 const FEEDBACK_VOICE_DELAY_MS=100;
 
 const state = {
@@ -46,36 +46,51 @@ const params = new URLSearchParams(location.search);
 if(params.get('sound') === 'off') state.sound = false;
 if(params.get('voice') === 'off') state.voice = false;
 
+let lastViewportValue='';
+let viewportChangedAt=performance.now();
+let orientationReadyTimer=0;
 function syncViewportSize(){
   const viewport=window.visualViewport;
   const width=Math.floor(viewport?.width||document.documentElement.clientWidth||window.innerWidth);
   const height=Math.floor(viewport?.height||document.documentElement.clientHeight||window.innerHeight);
+  const value=`${width}x${height}`;
+  if(value!==lastViewportValue){lastViewportValue=value;viewportChangedAt=performance.now();}
   document.documentElement.style.setProperty('--app-width',`${width}px`);
   document.documentElement.style.setProperty('--app-height',`${height}px`);
-  document.documentElement.dataset.viewport=`${width}x${height}`;
-  return `${width}x${height}`;
+  document.documentElement.dataset.viewport=value;
+  return value;
 }
 function resyncViewport(){
   syncViewportSize();
   requestAnimationFrame(syncViewportSize);
   [80,180,350,700,1100,1600].forEach(delay=>setTimeout(syncViewportSize,delay));
 }
-async function settleViewport(run,timeout=1800){
+function holdForOrientation(){
+  if(!isMobileDevice)return;
+  document.documentElement.classList.add('orientation-settling');
+  clearTimeout(orientationReadyTimer);
+  orientationReadyTimer=setTimeout(()=>{
+    syncViewportSize();
+    document.documentElement.classList.remove('orientation-settling');
+  },1000);
+}
+async function settleViewport(run,timeout=2800){
   const started=performance.now();let previous='',stable=0;
   while(run===state.startRun&&performance.now()-started<timeout){
     const current=syncViewportSize();
     if(current===previous)stable++;else{previous=current;stable=0;}
-    if(stable>=3&&window.innerWidth>window.innerHeight)return true;
+    const unchangedFor=performance.now()-viewportChangedAt;
+    if(stable>=8&&unchangedFor>=800&&window.innerWidth>window.innerHeight)return true;
     await new Promise(resolve=>setTimeout(resolve,80));
   }
   syncViewportSize();return run===state.startRun;
 }
 syncViewportSize();
 window.addEventListener('resize',resyncViewport,{passive:true});
-window.addEventListener('orientationchange',resyncViewport,{passive:true});
+window.addEventListener('orientationchange',()=>{holdForOrientation();resyncViewport();},{passive:true});
 window.addEventListener('pageshow',resyncViewport,{passive:true});
 document.addEventListener('fullscreenchange',resyncViewport,{passive:true});
-screen.orientation?.addEventListener?.('change',resyncViewport);
+screen.orientation?.addEventListener?.('change',()=>{holdForOrientation();resyncViewport();});
 window.visualViewport?.addEventListener('resize',syncViewportSize,{passive:true});
 window.visualViewport?.addEventListener('scroll',syncViewportSize,{passive:true});
 
