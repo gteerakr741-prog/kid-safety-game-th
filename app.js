@@ -37,9 +37,9 @@ const state = {
   screen:'loading', mode:'learn', duration:60, timeLeft:60, missionCount:12, sound:true, voice:true,
   running:false, paused:false, index:0, score:0, streak:0, maxStreak:0, safeFirst:0, lives:3,
   retries:0, firstAttempt:true, deck:[], shownOptions:[], locked:false, lastFivePlayed:false,
-  stream:null, handLandmarker:null, handLoading:false, handLoadPromise:null, handSeenAt:0, lastDetect:0, lastFrame:-1,
+  stream:null, handLandmarker:null, handLoading:false, handLoadPromise:null, handSeenAt:0, pointerX:null, pointerY:null, lastDetect:0, lastFrame:-1,
   hover:null, hoverStarted:0, dwellMs:650, choiceDwellMs:2000, timerId:null, answerTimer:null, advanceTimer:null,
-  audio:null, audioBuffers:new Map(), effectLoads:new Map(), effectSources:new Map(), voiceAudio:null, voiceResolve:null, voiceRun:0, startRun:0, testHold:0
+  audio:null, audioBuffers:new Map(), effectLoads:new Map(), effectSources:new Map(), musicBuffers:new Map(), musicLoads:new Map(), musicSource:null, musicGain:null, musicName:null, voiceBuffers:new Map(), voiceLoads:new Map(), voiceSource:null, voiceAudio:null, voiceResolve:null, voiceRun:0, startRun:0, testHold:0
 };
 
 const params = new URLSearchParams(location.search);
@@ -142,13 +142,21 @@ async function preload(){
     if(src.endsWith('.png')){const img=new Image();img.onload=img.onerror=resolve;img.src=src;}
     else fetch(src).then(resolve).catch(resolve);
   }).then(()=>{done++;bar.style.width=`${Math.round(done/assets.length*100)}%`;text.textContent=`เตรียมพร้อมแล้ว ${done}/${assets.length}`;})));
-  await prepareEffectAudio();
+  await Promise.all([prepareEffectAudio(),prepareMusicAudio()]);
   await new Promise(r=>setTimeout(r,350));
   setScreen('menu');
+  setTimeout(()=>void loadHandModel(),0);
 }
 
 function ensureAudio(){
-  if(!state.audio) state.audio = new (window.AudioContext || window.webkitAudioContext)();
+  if(!state.audio){
+    state.audio = new (window.AudioContext || window.webkitAudioContext)();
+    state.audio.onstatechange=()=>{
+      document.documentElement.dataset.audioState=state.audio.state;
+      if(state.audio.state==='running')$('#muteButton').classList.remove('needs-audio');
+      else if(state.sound&&state.screen==='game')$('#muteButton').classList.add('needs-audio');
+    };
+  }
   if(state.audio.state === 'suspended') state.audio.resume().catch(()=>{});
   return state.audio;
 }
@@ -175,6 +183,15 @@ function prepareEffectAudio(){
     if(state.effectLoads.has(name))return state.effectLoads.get(name);
     const load=fetch(sounds[name].src).then(response=>response.arrayBuffer()).then(data=>state.audio.decodeAudioData(data)).then(buffer=>{state.audioBuffers.set(name,buffer);return buffer;}).catch(()=>null).finally(()=>state.effectLoads.delete(name));
     state.effectLoads.set(name,load);return load;
+  }));
+}
+
+function prepareMusicAudio(){
+  return Promise.all(['menu','game'].map(name=>{
+    if(state.musicBuffers.has(name))return Promise.resolve(state.musicBuffers.get(name));
+    if(state.musicLoads.has(name))return state.musicLoads.get(name);
+    const load=fetch(sounds[name].src).then(response=>response.arrayBuffer()).then(data=>ensureAudio().decodeAudioData(data)).then(buffer=>{state.musicBuffers.set(name,buffer);return buffer;}).catch(()=>null).finally(()=>state.musicLoads.delete(name));
+    state.musicLoads.set(name,load);return load;
   }));
 }
 
@@ -212,21 +229,33 @@ function stopEffects(){
   effectNames.forEach(stopEffect);
 }
 
+function startBufferedMusic(name){
+  const context=ensureAudio(),buffer=state.musicBuffers.get(name);
+  if(context.state!=='running'||!buffer)return false;
+  if(state.musicName===name&&state.musicSource)return true;
+  stopMusic();
+  const source=context.createBufferSource(),gain=context.createGain();
+  source.buffer=buffer;source.loop=true;gain.gain.value=name==='menu'?AUDIO_LEVELS.menuMusic:AUDIO_LEVELS.gameMusic;
+  source.connect(gain).connect(context.destination);state.musicSource=source;state.musicGain=gain;state.musicName=name;
+  document.documentElement.dataset.musicState=`${name}:webaudio`;
+  source.onended=()=>{if(state.musicSource===source){state.musicSource=null;state.musicGain=null;state.musicName=null;}};
+  source.start();return true;
+}
+
 function playMusic(name){
-  const target=sounds[name];
-  Object.entries(sounds).forEach(([key,audio])=>{if(['menu','game'].includes(key)&&audio!==target)stopSound(audio);});
-  if(!target||!state.sound)return;
-  void wakeAudio();
-  void playSound(target,false).then(played=>{
-    if(played)return;
-    setTimeout(()=>{
-      const stillNeeded=name==='menu'?state.screen==='menu':['countdown','game'].includes(state.screen)&&!state.paused;
-      if(state.sound&&stillNeeded)void wakeAudio().then(()=>playSound(target,false));
-    },180);
+  const target=sounds[name];if(!target||!state.sound)return;
+  const stillNeeded=()=>name==='menu'?state.screen==='menu':state.screen==='game'&&!state.paused;
+  void wakeAudio().then(()=>{
+    if(!state.sound||!stillNeeded())return;
+    if(startBufferedMusic(name))return;
+    void prepareMusicAudio().then(()=>{if(state.sound&&stillNeeded()&&!startBufferedMusic(name))void playSound(target,false);});
   });
 }
 
-function stopMusic(){stopSound(sounds.menu);stopSound(sounds.game);}
+function stopMusic(){
+  if(state.musicSource){try{state.musicSource.stop();}catch{}}
+  state.musicSource=null;state.musicGain=null;state.musicName=null;delete document.documentElement.dataset.musicState;stopSound(sounds.menu);stopSound(sounds.game);
+}
 
 function syncAudioForScreen(){
   if(!state.sound){stopMusic();stopEffects();return;}
@@ -250,9 +279,17 @@ function tone(kind='tap'){
 function stopVoice(){
   state.voiceRun++;
   const resolve=state.voiceResolve;state.voiceResolve=null;
+  if(state.voiceSource){try{state.voiceSource.stop();}catch{}state.voiceSource=null;}
   if(state.voiceAudio){state.voiceAudio.onended=null;state.voiceAudio.onerror=null;state.voiceAudio.pause();try{state.voiceAudio.currentTime=0;}catch{}state.voiceAudio=null;}
   if(resolve)resolve(false);
   speechSynthesis?.cancel();
+}
+
+function loadVoiceBuffer(src){
+  if(state.voiceBuffers.has(src))return Promise.resolve(state.voiceBuffers.get(src));
+  if(state.voiceLoads.has(src))return state.voiceLoads.get(src);
+  const load=fetch(src).then(response=>response.arrayBuffer()).then(data=>ensureAudio().decodeAudioData(data)).then(buffer=>{state.voiceBuffers.set(src,buffer);return buffer;}).catch(()=>null).finally(()=>state.voiceLoads.delete(src));
+  state.voiceLoads.set(src,load);return load;
 }
 
 function primeVoiceAudio(){
@@ -266,7 +303,17 @@ function primeVoiceAudio(){
   }).catch(()=>false);
 }
 
-function playVoiceClip(src,run){
+async function playVoiceClip(src,run){
+  const buffer=await loadVoiceBuffer(src);
+  if(!state.voice||run!==state.voiceRun||state.screen!=='game'||state.paused)return false;
+  const context=ensureAudio();
+  if(buffer&&context.state==='running')return new Promise(resolve=>{
+    const source=context.createBufferSource(),gain=context.createGain();let settled=false;
+    const finish=played=>{if(settled)return;settled=true;if(state.voiceSource===source){state.voiceSource=null;state.voiceResolve=null;}resolve(played);};
+    source.buffer=buffer;gain.gain.value=AUDIO_LEVELS.voice;source.connect(gain).connect(context.destination);
+    state.voiceSource=source;state.voiceResolve=finish;source.onended=()=>finish(true);
+    document.documentElement.dataset.voiceState='webaudio';source.start();
+  });
   return new Promise(resolve=>{
     if(!state.voice||run!==state.voiceRun||state.screen!=='game'||state.paused){resolve(false);return;}
     const audio=voicePlayer;let settled=false;
@@ -274,8 +321,8 @@ function playVoiceClip(src,run){
     audio.pause();audio.src=src;audio.preload='auto';audio.volume=AUDIO_LEVELS.voice;audio.muted=false;
     state.voiceAudio=audio;state.voiceResolve=finish;audio.onended=()=>finish(true);audio.onerror=()=>finish(false);
     let attempts=0;
-    const start=()=>audio.play().catch(()=>{
-      if(attempts++<1&&run===state.voiceRun&&state.voice&&state.screen==='game'){setTimeout(start,120);return;}
+    const start=()=>audio.play().then(()=>{document.documentElement.dataset.voiceState='media';}).catch(()=>{
+      if(attempts++<2&&run===state.voiceRun&&state.voice&&state.screen==='game'){recoverAudio();setTimeout(start,100);return;}
       finish(false);
     });
     start();
@@ -299,7 +346,8 @@ async function startCamera(){
   if(state.stream?.active) return true;
   if(!navigator.mediaDevices?.getUserMedia){$('#cameraStatus').textContent='อุปกรณ์นี้ไม่รองรับกล้องผ่านหน้านี้';return false;}
   try{
-    state.stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:960,max:1280},height:{ideal:540,max:720},frameRate:{ideal:24,max:30}}});
+    const size=isMobileDevice?{width:{ideal:640,max:960},height:{ideal:360,max:540}}:{width:{ideal:960,max:1280},height:{ideal:540,max:720}};
+    state.stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',...size,frameRate:{ideal:24,max:30}}});
     camera.srcObject=state.stream;await camera.play();stage.classList.add('camera-on');
     $('#cameraStatus').textContent='เปิดกล้องแล้ว กำลังเตรียมระบบตรวจมือ';
     void loadHandModel();return true;
@@ -377,10 +425,13 @@ async function trackingLoop(now){
       const tip=nearestHand(result.landmarks)?.[8];
       if(tip){
         state.handSeenAt=now;
-        const r=stage.getBoundingClientRect();updatePointer((1-tip.x)*r.width,tip.y*r.height,now);
+        const r=stage.getBoundingClientRect(),nextX=(1-tip.x)*r.width,nextY=tip.y*r.height;
+        state.pointerX=state.pointerX===null?nextX:state.pointerX*.48+nextX*.52;
+        state.pointerY=state.pointerY===null?nextY:state.pointerY*.48+nextY*.52;
+        updatePointer(state.pointerX,state.pointerY,now);
         $('#trackingDot').classList.add('ready');
         $('#trackingText').textContent='พบมือแล้ว · ชี้ค้าง 2 วินาที';
-      }else{pointer.classList.remove('visible');clearHover();$('#trackingDot').classList.remove('ready');if(now-state.handSeenAt>1200)$('#trackingText').textContent='ยกมือให้เห็นทั้งฝ่ามือ · หันฝ่ามือเข้ากล้อง';}
+      }else if(now-state.handSeenAt>350){pointer.classList.remove('visible');clearHover();state.pointerX=null;state.pointerY=null;$('#trackingDot').classList.remove('ready');if(now-state.handSeenAt>1200)$('#trackingText').textContent='ยกมือให้เห็นทั้งฝ่ามือ · หันฝ่ามือเข้ากล้อง';}
     }catch{}
   }
   requestAnimationFrame(trackingLoop);
@@ -492,18 +543,18 @@ async function runStartCountdown(run){
 
 async function startGame(){
   const run=++state.startRun;
-  const audioReady=resetAudioOutput();stopVoice();const voiceReady=primeVoiceAudio();tone('tap');playMusic('game');
+  const audioReady=resetAudioOutput();stopVoice();const voiceReady=primeVoiceAudio();tone('tap');
   const previewIndex=Number(params.get('scenario'))-1;
   const fullDeck=Number.isInteger(previewIndex)&&scenarios[previewIndex]?[scenarios[previewIndex],...shuffle(scenarios.filter((_,i)=>i!==previewIndex))]:shuffle(scenarios);
   state.deck=fullDeck.slice(0,state.missionCount);
-  state.index=0;state.score=0;state.streak=0;state.maxStreak=0;state.safeFirst=0;state.retries=0;state.lives=3;state.timeLeft=state.duration;state.lastFivePlayed=false;state.running=true;state.paused=false;
+  state.index=0;state.score=0;state.streak=0;state.maxStreak=0;state.safeFirst=0;state.retries=0;state.lives=3;state.timeLeft=state.duration;state.lastFivePlayed=false;state.handSeenAt=0;state.pointerX=null;state.pointerY=null;state.running=true;state.paused=false;
   state.locked=true;setScreen('countdown');$('#countdownStatus').textContent='กำลังเตรียมกล้องและระบบตรวจมือ';resyncViewport();
   const [cameraReady]=await Promise.all([startCamera(),settleViewport(run)]);
   const handReady=cameraReady?await Promise.race([loadHandModel(),new Promise(resolve=>setTimeout(()=>resolve(false),12000))]):false;
   $('#countdownStatus').textContent=handReady?'พร้อมแล้ว ยกมือให้เห็นทั้งฝ่ามือ':'ใช้การแตะหน้าจอเลือกคำตอบได้';
   await Promise.race([Promise.all([audioReady,voiceReady]),new Promise(resolve=>setTimeout(resolve,500))]);
   if(!await runStartCountdown(run))return;
-  syncViewportSize();setScreen('game');playMusic('game');showScenario();requestAnimationFrame(syncViewportSize);
+  syncViewportSize();setScreen('game');await wakeAudio();playMusic('game');await Promise.race([primeVoiceAudio(),new Promise(resolve=>setTimeout(()=>resolve(false),250))]);showScenario();requestAnimationFrame(syncViewportSize);
   clearInterval(state.timerId);state.timerId=setInterval(()=>{if(state.running&&!state.paused&&state.mode==='timed'){state.timeLeft-=.25;if(state.timeLeft<=5&&state.timeLeft>0&&!state.lastFivePlayed){state.lastFivePlayed=true;playEffect('final5');}updateHud();if(state.timeLeft<=0)finishGame();}},250);
 }
 
@@ -564,7 +615,14 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&state.screen==='game')pauseGame(true);});
 window.addEventListener('pagehide',()=>{if(state.screen==='game')pauseGame(true);});
 window.addEventListener('beforeunload',stopCamera);
-document.addEventListener('pointerdown',()=>{if(!state.sound)return;void wakeAudio();if(state.screen==='menu')playMusic('menu');},{passive:true});
+function recoverAudio(){if(!state.sound)return;void wakeAudio().then(()=>syncAudioForScreen());}
+document.addEventListener('pointerdown',recoverAudio,{passive:true});
+window.addEventListener('focus',recoverAudio,{passive:true});
+window.addEventListener('pageshow',recoverAudio,{passive:true});
+setInterval(()=>{
+  if(!state.sound||state.screen!=='game'||state.paused)return;
+  if(state.audio?.state!=='running'||state.musicName!=='game'||!state.musicSource)recoverAudio();
+},1200);
 
 requestAnimationFrame(trackingLoop);
 $('#soundToggle').checked=state.sound;
